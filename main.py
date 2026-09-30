@@ -1,12 +1,219 @@
-"""Run from the root of the Git repository being summarized."""
+"""
+AI 기반 Git 커밋 메시지 및 PR 초안 자동 생성 CLI 도우미
 
+사용법:
+    python main.py commit                    # 커밋 메시지 자동 생성
+    python main.py pr                        # PR 제목/본문 초안 생성
+    python main.py commit --safe-mode        # 안전 모드 (민감정보 마스킹)
+    python main.py commit --model gpt-5-mini # 모델 변경
+"""
+
+import argparse
 import sys
+
+from gitgen.ai_client import AIClient
+from gitgen.config import (
+    DEFAULT_COMMIT_MAX_TOKENS,
+    DEFAULT_MODEL,
+    DEFAULT_PR_MAX_TOKENS,
+    DEFAULT_TEMPERATURE,
+)
+from gitgen.git_utils import (
+    get_current_branch,
+    get_git_diff,
+    get_git_status,
+    is_git_repo,
+)
+from gitgen.prompts import get_commit_prompt, get_pr_prompt
+from gitgen.validator import (
+    apply_safe_mode,
+    validate_and_format_commit,
+    validate_and_format_pr,
+)
+
+
+def handle_commit(args: argparse.Namespace) -> None:
+    """commit 서브커맨드 핸들러: 커밋 메시지 자동 생성"""
+
+    # 1. Git 저장소 여부 확인
+    if not is_git_repo():
+        print("[ERROR] Git 저장소가 아닙니다. Git 저장소 루트에서 실행해주세요.", file=sys.stderr)
+        sys.exit(1)
+
+    # 2. Git status 수집
+    status_info = get_git_status()
+    file_count = status_info["count"]
+    changed_files = status_info["files"]
+
+    # 3. Git diff 수집
+    diff_info = get_git_diff()
+    diff_text = diff_info["diff"]
+    line_count = diff_info["line_count"]
+
+    # 변경 사항이 없을 경우 종료
+    if file_count == 0 and line_count == 0:
+        print("[INFO] 변경 사항이 없습니다. 커밋 메시지를 생성하지 않고 종료합니다.")
+        sys.exit(0)
+
+    print(f"[INFO] Git status 수집 완료: {file_count}개 파일 변경 감지")
+    print(f"[INFO] Git diff 수집 완료: {line_count}줄")
+
+    # safe-mode 처리
+    if args.safe_mode:
+        print("[INFO] 안전 모드(Safe Mode) 활성화: 민감 정보 마스킹 및 diff 제한 적용")
+        diff_text, changed_files = apply_safe_mode(diff_text, changed_files)
+
+    # 4. AI API 호출
+    client = AIClient(model=args.model)
+    if not client.check_api_key():
+        sys.exit(1)
+
+    messages = get_commit_prompt(changed_files, diff_text)
+
+    print("[INFO] AI API 요청 중...")
+    try:
+        raw_output = client.request_completion(
+            messages=messages,
+            model=args.model,
+            temperature=args.temperature,
+            max_tokens=args.max_tokens,
+        )
+    except Exception as e:
+        print(f"[ERROR] AI API 호출 실패: {str(e)}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"[INFO] AI API 호출 횟수: {client.call_count}회")
+    print("[DONE] 커밋 메시지 생성 완료\n")
+
+    # 5. 검증 및 출력 서식 적용
+    formatted_commit = validate_and_format_commit(raw_output)
+
+    print("--- Commit Message ---")
+    print(formatted_commit)
+    print("----------------------")
+
+
+def handle_pr(args: argparse.Namespace) -> None:
+    """pr 서브커맨드 핸들러: PR 제목/본문 초안 자동 생성"""
+
+    # 1. Git 저장소 여부 확인
+    if not is_git_repo():
+        print("[ERROR] Git 저장소가 아닙니다. Git 저장소 루트에서 실행해주세요.", file=sys.stderr)
+        sys.exit(1)
+
+    # 2. 현재 브랜치 확인
+    branch_name = get_current_branch()
+    print(f"[INFO] 현재 브랜치: {branch_name}")
+
+    # 3. Git status 및 diff 수집
+    status_info = get_git_status()
+    file_count = status_info["count"]
+    changed_files = status_info["files"]
+
+    diff_info = get_git_diff()
+    diff_text = diff_info["diff"]
+    line_count = diff_info["line_count"]
+
+    # 변경 사항이 없을 경우 종료
+    if file_count == 0 and line_count == 0:
+        print("[INFO] 변경 사항이 없습니다. PR 초안을 생성하지 않고 종료합니다.")
+        sys.exit(0)
+
+    print(f"[INFO] Git status 수집 완료: {file_count}개 파일 변경 감지")
+    print(f"[INFO] Git diff 수집 완료: {line_count}줄")
+
+    # safe-mode 처리
+    if args.safe_mode:
+        print("[INFO] 안전 모드(Safe Mode) 활성화: 민감 정보 마스킹 및 diff 제한 적용")
+        diff_text, changed_files = apply_safe_mode(diff_text, changed_files)
+
+    # 4. AI API 호출
+    client = AIClient(model=args.model)
+    if not client.check_api_key():
+        sys.exit(1)
+
+    messages = get_pr_prompt(branch_name, changed_files, diff_text)
+
+    print("[INFO] AI API 요청 중...")
+    try:
+        raw_output = client.request_completion(
+            messages=messages,
+            model=args.model,
+            temperature=args.temperature,
+            max_tokens=args.max_tokens,
+        )
+    except Exception as e:
+        print(f"[ERROR] AI API 호출 실패: {str(e)}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"[INFO] AI API 호출 횟수: {client.call_count}회")
+    print("[DONE] PR 초안 생성 완료\n")
+
+    # 5. 검증 및 출력 서식 적용
+    title, body = validate_and_format_pr(raw_output)
+
+    print("--- PR Title ---")
+    print(title)
+    print("\n--- PR Body ---")
+    print(body)
+    print("----------------")
+
+
+def add_common_arguments(parser: argparse.ArgumentParser, default_max_tokens: int) -> None:
+    """공통 CLI 옵션들을 추가합니다."""
+    parser.add_argument(
+        "--model",
+        "-model",
+        type=str,
+        default=DEFAULT_MODEL,
+        help=f"사용할 AI 모델 이름 (기본값: {DEFAULT_MODEL})",
+    )
+    parser.add_argument(
+        "--temperature",
+        "-temperature",
+        type=float,
+        default=DEFAULT_TEMPERATURE,
+        help=f"샘플링 온도 (기본값: {DEFAULT_TEMPERATURE})",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        "-max-tokens",
+        type=int,
+        default=default_max_tokens,
+        help=f"생성할 최대 토큰 수 (기본값: {default_max_tokens})",
+    )
+    parser.add_argument(
+        "--safe-mode",
+        "-safe-mode",
+        action="store_true",
+        help="민감 정보 마스킹 및 diff 전송량 제한 안전 모드",
+    )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Git 변경 사항을 기반으로 커밋 메시지와 PR 초안을 자동 생성하는 AI 도우미"
+    )
+    subparsers = parser.add_subparsers(dest="command", help="실행할 명령어 (commit 또는 pr)")
+
+    # 1. commit 서브커맨드
+    commit_parser = subparsers.add_parser("commit", help="Git 변경 사항을 기반으로 커밋 메시지를 생성합니다.")
+    add_common_arguments(commit_parser, default_max_tokens=DEFAULT_COMMIT_MAX_TOKENS)
+
+    # 2. pr 서브커맨드
+    pr_parser = subparsers.add_parser("pr", help="Git 변경 사항을 기반으로 PR 제목과 본문 초안을 생성합니다.")
+    add_common_arguments(pr_parser, default_max_tokens=DEFAULT_PR_MAX_TOKENS)
+
+    args = parser.parse_args()
+
+    if args.command == "commit":
+        handle_commit(args)
+    elif args.command == "pr":
+        handle_pr(args)
+    else:
+        parser.print_help()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    if sys.version_info < (3, 10):
-        print("[ERROR] Python 3.10 이상이 필요합니다. python3 --version을 확인하세요.", file=sys.stderr)
-        sys.exit(2)
-    from gitgen.cli import main
-
-    sys.exit(main())
+    main()

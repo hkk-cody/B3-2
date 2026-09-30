@@ -1,82 +1,83 @@
-# Codyssey 실제 API 검증 기록
+# 실제 AI API 검증 기록
 
-검증일: 2026-09-10
+검증일: 2026-09-30
 
-프로젝트 `.env`에 설정된 키로 Codyssey 서버에 실제 요청하여 커밋 메시지와 PR 초안 생성을 확인했다. 키를 출력하거나 기록하지 않았다.
+프로젝트 `.env`에 설정된 Google Gemini 공식 OpenAI 호환 엔드포인트를 통해 실제 API를 호출하여 커밋 메시지와 PR 초안 생성이 정상 작동함을 확인했습니다. (보안을 위해 실제 API 키는 기록하지 않습니다.)
 
-| 항목             | 결과                                           |
-| ---------------- | ---------------------------------------------- |
-| 요청 주소        | `https://copa.codyssey.kr/v1/chat/completions` |
-| 모델             | `gpt-5-mini`                                   |
-| 커밋 생성        | 성공, API 1회, 종료 코드 0                     |
-| PR 생성          | 성공, API 1회, 종료 코드 0                     |
-| 재생성           | 두 명령 모두 불필요                            |
-| 총 실제 API 호출 | 2회                                            |
+| 항목 | 결과 |
+| :--- | :--- |
+| 요청 주소 (Base URL) | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| 모델 | `gemini-flash-latest` |
+| 커밋 생성 (`commit`) | 성공, AI API 1회 호출, 종료 코드 0 |
+| PR 생성 (`pr`) | 성공, AI API 1회 호출, 종료 코드 0 |
+| 총 실제 API 호출 | 2회 |
 
-## 검증 범위
+---
 
-임시 Git 저장소에 `greetings.py`를 만들고 이름 앞뒤의 공백을 제거하며 공백만 입력하면 `ValueError`를 발생시키는 작은 변경을 staged 상태로 준비했다. 프로젝트 `.env`를 읽은 뒤 같은 프로세스에서 실제 CLI의 `main()`에 `commit`과 `pr`을 각각 전달했다. CLI는 항상 staged 변경만 분석하므로 별도의 staged 옵션은 사용하지 않았다. 각 명령은 별도의 임시 저장소에서 실행했다. 프로그램 본체의 Git 수집·안전 처리·REST 요청·응답 검증·출력 과정을 사용했으며 API 응답을 모의 처리하지 않았다.
-
-API 요청 전에 샘플 함수가 아래 두 조건을 만족하는지 실제로 검사했다 (초기 검증 당시에는 `--test-context`를 사용했으나, 현재는 CLI가 diff 기반으로 단순화되어 옵션 없이 실행함).
-
-- `greet(" Alice ")` → `"Hello, Alice!"`
-- `greet("   ")` → `ValueError`
-
-생성된 제목은 길이·한 줄 규칙을 통과했고, PR에는 Why·What·How to Test 섹션과 불릿이 포함되었다. 두 결과를 샘플 diff와 대조해 입력 정리·빈 이름 예외 처리·실제 테스트 결과를 올바르게 설명하는지 확인했다. 원래 프로젝트의 인덱스·커밋·원격 저장소는 변경하지 않았다.
-
-이 기록은 작은 텍스트 변경에 대한 성공 사례다. 모든 모델·입력 크기·오류 상황의 실제 서버 동작을 보장하지 않는다. 토큰 사용량은 별도로 수집하지 않았으며, 잔여량은 Codyssey 콘솔에서 확인할 수 있다.
-
-## 실제 커밋 생성 출력
+## 1. 실제 커밋 생성 출력 (`python main.py commit`)
 
 ```text
-Exit code: 0
-[INFO] Git status 수집 완료: 1개 파일 변경 감지
-[INFO] M  'greetings.py'
-[INFO] 안전 처리 완료: diff 11줄, 민감 파일 제외 0개, 한도 제외 0개, 잘린 diff 0개
+[INFO] Git status 수집 완료: 22개 파일 변경 감지
+[INFO] Git diff 수집 완료: 2265줄
 [INFO] AI API 요청 중...
-[DONE] 초안 생성 완료. 내용과 테스트 사실을 검토한 뒤 복사하여 적용하세요.
-[INFO] API 호출 횟수: 1회
-
---- Change Summary ---
-greet 함수에서 입력 이름을 strip하여 공백만 입력된 경우 ValueError를 발생시키도록 검증을 추가하고, 정상 입력은 공백을 제거한 값으로 인사말을 반환하도록 변경함.
+[INFO] AI API 호출 횟수: 1회
+[DONE] 커밋 메시지 생성 완료
 
 --- Commit Message ---
-fix: 공백만 입력된 이름으로 인사말 생성 오류 방지
+refactor: CLI 구조 개편 및 핵심 모듈 단순화
 
-- name.strip()로 입력을 정리하고 정리된 이름이 비어있으면 ValueError("Name is required")를 발생시킴
-- 정상 입력의 경우 공백이 제거된 이름으로 포맷된 인사말을 반환하도록 greet 함수 반환값을 변경함
+- main.py, gitgen/, README.md
+- main.py의 서브커맨드 핸들러를 분리하고 CLI 실행 흐름을 직관적으로 개선
+- gitgen 내부 모듈을 ai_client, git_utils, validator 중심으로 통폐합 및 리팩토링
+- 변경된 아키텍처에 맞춰 프로젝트 문서(README.md)와 프롬프트 템플릿 갱신
 ----------------------
 ```
 
-## 실제 PR 생성 출력
+### 검증 포인트 만족 여부:
+- [x] 커밋 제목 1줄 (최대 72자)
+- [x] Conventional Commits 접두사(`refactor:`) 준수
+- [x] 제목과 본문 사이 빈 줄 유지
+- [x] 본문에 변경된 주요 파일(`main.py, gitgen/, README.md`) 1~3개 언급
+- [x] 핵심 변경 사항 불릿('- ') 요약
+- [x] API 호출 횟수(`1회`) 명시
+
+---
+
+## 2. 실제 PR 초안 생성 출력 (`python main.py pr`)
 
 ```text
-Exit code: 0
-[INFO] Git status 수집 완료: 1개 파일 변경 감지
-[INFO] M  'greetings.py'
-[INFO] 안전 처리 완료: diff 11줄, 민감 파일 제외 0개, 한도 제외 0개, 잘린 diff 0개
+[INFO] 현재 브랜치: main
+[INFO] Git status 수집 완료: 22개 파일 변경 감지
+[INFO] Git diff 수집 완료: 2265줄
 [INFO] AI API 요청 중...
-[DONE] 초안 생성 완료. 내용과 테스트 사실을 검토한 뒤 복사하여 적용하세요.
-[INFO] API 호출 횟수: 1회
-
---- Change Summary ---
-입력값을 strip하고 공백만인 경우 ValueError를 발생시켜 잘못된 인사말 생성을 방지함
+[INFO] AI API 호출 횟수: 1회
+[DONE] PR 초안 생성 완료
 
 --- PR Title ---
-fix: 공백만 입력된 이름으로 인사말 생성 방지
+refactor: gitgen 모듈 아키텍처 단순화 및 CLI 파이프라인 개편
 
 --- PR Body ---
 ## Why
-- 이전 구현은 입력값에 공백만 들어오면 빈 이름으로 인사말을 생성하는 문제를 발생시킬 수 있음
-- 사용자 입력을 정리하고 필수 입력 누락을 명확하게 처리하기 위해 입력값을 strip하고 비어있으면 예외를 던지도록 함
+- 기존에 지나치게 잘게 쪼개져 있던 모듈 구조(`generation`, `render`, `safety`, `validators` 등)로 인한 복잡도를 줄이고 유지보수성을 높이기 위함입니다.
+- CLI 진입점(`main.py`)과 핵심 로직(`git_utils`, `ai_client`, `validator`)의 책임을 명확히 분리하여 가독성과 코드 응집도를 개선하기 위함입니다.
 
 ## What
-- name.strip()로 앞뒤 공백을 제거하여 clean_name 변수에 저장하도록 변경함
-- clean_name이 비어있으면 ValueError("Name is required")를 발생시키고, 그렇지 않으면 clean_name으로 인사말을 반환하도록 수정함
+- 모듈 통합 및 리팩토링: `api_client`, `git_context`, `safety`, `render`, `validators` 등을 `ai_client.py`, `git_utils.py`, `validator.py`로 통폐합
+- CLI 파이프라인 재설계: `main.py` 내에 `commit` 및 `pr` 서브커맨드 핸들러를 직관적인 절차형 흐름으로 재구성
+- 프롬프트 및 출력 포맷팅 검증 간소화: JSON 스키마 강제 방식 대신 직접적인 텍스트 검증 및 마스킹 로직(`validate_and_format_*`) 적용
+- 테스트 및 문서 정비: 모듈 재구조화에 맞춰 `README.md` 사용 가이드 갱신 및 테스트 코드 통합
 
 ## How to Test
-- greet(" Alice ")가 "Hello, Alice!"을 반환하는지 확인함 (검증: 통과)
-- greet("   ")가 ValueError를 발생시키는지 확인함 (검증: 통과)
-
-----------------------
+- `pytest`를 실행하여 단위 테스트 통과 여부 검증
+- 임의의 파일 수정 후 `python main.py commit`을 실행하여 커밋 메시지 포맷(제목 1줄 + 빈 줄 + 파일/불릿 요약) 생성 확인
+- `python main.py pr`을 실행하여 PR Title 및 3대 필수 섹션(`## Why`, `## What`, `## How to Test`)과 불릿 항목 출력 확인
+- `python main.py commit --safe-mode`를 실행하여 민감 정보 마스킹 및 diff 줄 수 제한이 정상 적용되는지 확인
+----------------
 ```
+
+### 검증 포인트 만족 여부:
+- [x] PR 제목 1줄 (최대 80자)
+- [x] 필수 3대 섹션 헤더(`## Why`, `## What`, `## How to Test`) 포함
+- [x] 각 섹션마다 최소 1개 이상의 구체적인 불릿('- ') 포함
+- [x] 구분선으로 터미널에서 쉽게 복사 가능
+- [x] API 호출 횟수(`1회`) 명시
