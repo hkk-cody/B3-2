@@ -36,20 +36,46 @@ def normalize_base_url(value: str) -> str:
     return value if p.path else value + "/v1"
 
 
+def _read_env_file(env_file: Path) -> dict[str, str]:
+    """표준 라이브러리만으로 .env 파일을 안전하게 파싱합니다."""
+    if not env_file.exists():
+        return {}
+    if not env_file.is_file():
+        raise GitgenError("프로젝트 루트의 .env는 일반 텍스트 파일이어야 합니다.")
+    try:
+        content = env_file.read_text(encoding="utf-8-sig")
+    except (UnicodeError, OSError):
+        raise GitgenError(".env를 읽을 수 없습니다. 파일 권한과 UTF-8 인코딩을 확인하세요.") from None
+
+    values = {}
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        if "=" not in line:
+            continue
+        key, val = line.split("=", 1)
+        key = key.strip()
+        val = val.strip()
+
+        if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+            val = val[1:-1]
+        elif val.startswith('"') and '"' in val[1:]:
+            val = val[1:val.find('"', 1)]
+        elif val.startswith("'") and "'" in val[1:]:
+            val = val[1:val.find("'", 1)]
+        elif " #" in val:
+            val = val.split(" #", 1)[0].strip()
+
+        values[key] = val
+    return values
+
+
 def load_settings(root: Path) -> Settings:
     """환경변수 및 .env 파일에서 설정 로드."""
-    env_values = {}
-    env_file = root / ".env"
-    if env_file.exists():
-        if not env_file.is_file():
-            raise GitgenError("프로젝트 루트의 .env는 일반 텍스트 파일이어야 합니다.")
-        try:
-            from dotenv import dotenv_values
-            env_values = dotenv_values(env_file, encoding="utf-8-sig", interpolate=False) or {}
-        except ImportError:
-            raise GitgenError(".env 로딩에 필요한 의존성이 없습니다. python -m pip install -r requirements.txt를 실행하세요.") from None
-        except Exception:
-            raise GitgenError(".env를 읽을 수 없습니다. 파일 권한과 UTF-8 인코딩을 확인하세요.")
+    env_values = _read_env_file(root / ".env")
 
     def get_val(key: str, default: str = "") -> str:
         return os.environ.get(key, "").strip() or (env_values.get(key) or "").strip() or default
