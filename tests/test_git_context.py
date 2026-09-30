@@ -2,7 +2,7 @@ import subprocess
 
 import pytest
 
-from conftest import git
+from tests.conftest import git
 from gitgen.errors import GitgenError
 from gitgen.git_context import collect, parse_status, read_diff, run_git
 
@@ -11,17 +11,23 @@ def test_clean_repo(repo):
     assert collect(repo).changes == []
 
 
-def test_both_layers_and_staged_selection(repo):
+def test_layers_selects_staged_only(repo):
     (repo / "app.py").write_text("print('staged')\n")
     git(repo, "add", "app.py")
     (repo / "app.py").write_text("print('unstaged')\n")
     context = collect(repo)
     change = context.changes[0]
     assert change.status == "MM"
-    assert change.layers(False) == ["staged", "unstaged"]
-    assert change.layers(True) == ["staged"]
+    assert change.layers() == ["staged"]
     assert "+print('staged')" in read_diff(context, change, "staged")
     assert "+print('unstaged')" in read_diff(context, change, "unstaged")
+
+
+def test_unstaged_only_has_no_layers(repo):
+    (repo / "app.py").write_text("print('unstaged')\n")
+    change = collect(repo).changes[0]
+    assert change.status == " M"
+    assert change.layers() == []
 
 
 def test_new_file_in_repository_without_commit(tmp_path):
@@ -63,7 +69,7 @@ def test_delete_and_binary(repo):
 def test_untracked_is_status_only(repo):
     (repo / "private.txt").write_text("Do not read")
     change = collect(repo).changes[0]
-    assert change.untracked and change.layers(False) == []
+    assert change.untracked and change.layers() == []
 
 
 def test_outside_and_subdirectory(repo, tmp_path):

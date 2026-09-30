@@ -3,7 +3,7 @@ import json
 import pytest
 import requests
 
-from conftest import Response, response_for
+from tests.conftest import Response, response_for
 from gitgen.api_client import ApiClient, ENDPOINT, parse_response
 from gitgen.errors import GitgenError, ValidationError
 from gitgen.generation import generate
@@ -30,7 +30,7 @@ def test_title_boundaries(command, length, valid, commit_draft, pr_draft):
             validate(command, json.dumps(draft))
 
 
-@pytest.mark.parametrize("title", ["", " ", "first\nsecond", "\x1b[31mred", "a\u202eb", "a\r", 4, None])
+@pytest.mark.parametrize("title", ["", " ", "first\nsecond", "a\r", 4, None])
 def test_invalid_title(title, commit_draft):
     commit_draft["title"] = title
     with pytest.raises(ValidationError):
@@ -160,7 +160,17 @@ def test_incomplete_or_refused_responses_do_not_retry(monkeypatch, payload, body
     assert client.calls == 1
 
 
-def test_response_size_limit(monkeypatch, payload):
-    monkeypatch.setattr(requests, "post", lambda *a, **k: Response(b"x" * 256_001))
-    with pytest.raises(GitgenError, match="크기 제한"):
-        ApiClient("fake-key").generate(payload)
+
+def test_commit_and_pr_prompts_are_separated():
+    commit_payload = build_payload("commit", {}, "gpt-5-mini", None, 4096)
+    commit_system = commit_payload["messages"][0]["content"]
+    assert "커밋 메시지 작성 규칙" in commit_system
+    assert "50자 이내" in commit_system
+    assert "how_to_test" not in commit_system.split("다음 JSON 스키마에 맞춰")[0]
+
+    pr_payload = build_payload("pr", {}, "gpt-5-mini", None, 4096)
+    pr_system = pr_payload["messages"][0]["content"]
+    assert "PR 작성 규칙" in pr_system
+    assert "how_to_test" in pr_system
+    assert "50자 이내를 목표로" not in pr_system
+

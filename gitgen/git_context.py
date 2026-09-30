@@ -18,15 +18,11 @@ class Change:
     def untracked(self) -> bool:
         return self.status == "??"
 
-    def layers(self, staged_only: bool) -> list[str]:
-        if self.untracked:
+    def layers(self) -> list[str]:
+        # Only staged changes are analyzed so the draft matches the next commit.
+        if self.untracked or self.status[0] == " ":
             return []
-        result = []
-        if self.status[0] != " ":
-            result.append("staged")
-        if not staged_only and self.status[1] != " ":
-            result.append("unstaged")
-        return result
+        return ["staged"]
 
 
 @dataclass(frozen=True)

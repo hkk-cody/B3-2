@@ -6,12 +6,13 @@ import sys
 import pytest
 import requests
 
-from conftest import git, response_for
+from tests.conftest import git, response_for
 from gitgen.cli import main
 
 
 def modify(repo):
     (repo / "app.py").write_text("print('after')\n")
+    git(repo, "add", "app.py")
 
 
 def test_no_changes_needs_no_key(repo, capsys):
@@ -26,9 +27,9 @@ def test_untracked_only_needs_no_key(repo, capsys):
     assert "분석할 diff가 없습니다" in capsys.readouterr().err
 
 
-def test_no_staged_changes(repo, capsys):
-    modify(repo)
-    assert main(["commit", "--staged"]) == 0
+def test_unstaged_only_needs_staging(repo, capsys):
+    (repo / "app.py").write_text("print('unstaged only')\n")
+    assert main(["commit"]) == 0
     assert "staged 변경 사항이 없습니다" in capsys.readouterr().err
 
 
@@ -42,7 +43,7 @@ def test_missing_key(repo, capsys):
 def test_all_excluded_needs_no_key(repo, capsys):
     (repo / ".env").write_text("secret\n")
     git(repo, "add", ".env")
-    assert main(["pr"]) == 0
+    assert main(["pr", "--safe-mode"]) == 0
     assert "전송 가능한 diff가 없습니다" in capsys.readouterr().err
 
 
@@ -73,9 +74,10 @@ def test_end_to_end_mocked_api(repo, monkeypatch, capsys, command, commit_draft,
 
 def test_partial_analysis_in_pr(repo, monkeypatch, capsys, pr_draft):
     (repo / "app.py").write_text("\n".join(f"line{i}" for i in range(500)))
+    git(repo, "add", "app.py")
     monkeypatch.setenv("AI_API_KEY", "fake-key")
     monkeypatch.setattr(requests, "post", lambda *a, **k: response_for(pr_draft))
-    assert main(["pr"]) == 0
+    assert main(["pr", "--safe-mode"]) == 0
     assert "부분 분석" in capsys.readouterr().out
 
 
@@ -96,3 +98,21 @@ def test_actual_entrypoint_dry_run(repo):
     assert completed.returncode == 0
     assert "API Request Preview" in completed.stdout
     assert "API 호출 횟수: 0회" in completed.stderr
+
+
+def test_safe_mode_on_off_difference(repo, capsys):
+    (repo / "secret.py").write_text("password = 'super_secret_password'\n")
+    git(repo, "add", "secret.py")
+
+    # 1. 안전 모드 OFF (기본값): 비밀번호가 그대로 요청 본문에 포함됨
+    assert main(["commit", "--dry-run"]) == 0
+    out_off, err_off = capsys.readouterr()
+    assert "super_secret_password" in out_off
+    assert "안전 모드 미적용" in err_off
+
+    # 2. 안전 모드 ON (--safe-mode 지정): 비밀번호가 [REDACTED]로 마스킹됨
+    assert main(["commit", "--dry-run", "--safe-mode"]) == 0
+    out_on, err_on = capsys.readouterr()
+    assert "super_secret_password" not in out_on
+    assert "[REDACTED]" in out_on
+    assert "안전 모드 적용" in err_on

@@ -1,11 +1,14 @@
 # AI Git 초안 생성기
 
-Git 변경 내용을 읽어 한국어 커밋 메시지와 Pull Request 제목·본문을 만드는 Python CLI입니다. 변경 내용을 Codyssey의 OpenAI 호환 API에 보내고, 응답 형식을 검증한 뒤 복사해서 사용할 초안을 터미널에 출력합니다.
+Git의 **staged 변경(`git add`로 인덱스에 올린, 다음 커밋에 포함될 변경)**을 읽어 한국어 커밋 메시지와 Pull Request 제목·본문을 만드는 Python CLI입니다. 변경 내용을 Codyssey의 OpenAI 호환 API에 보내고, 응답 형식을 검증한 뒤 복사해서 사용할 초안을 터미널에 출력합니다.
 
 ```bash
+git add .
 python main.py commit
-python main.py pr --context "빈 입력으로 발생하던 오류 수정"
+python main.py pr
 ```
+
+분석 대상은 항상 staged 변경입니다. 초안이 실제 커밋 내용과 일치하도록, `git add`로 커밋할 변경을 먼저 stage한 뒤 실행하세요.
 
 과제 원문은 [subject.md](subject.md), 구현 계획은 [PLAN.md](PLAN.md)에 있습니다. 자동 커밋·push·PR 등록은 하지 않습니다.
 
@@ -68,14 +71,14 @@ PowerShell에서는 `$env:AI_API_KEY = "YOUR_CODYSSEY_OPENAI_COMPATIBLE_KEY"`로
 
 2026-09-10에 확인한 Codyssey 콘솔의 **문서 → 텍스트(OpenAI) → Python** 예제를 기준으로 다음 형식을 사용합니다.
 
-| 항목 | 설정 |
-| --- | --- |
-| 기본 API 주소 | `https://copa.codyssey.kr/v1` |
-| POST 요청 주소 | `https://copa.codyssey.kr/v1/chat/completions` |
-| 인증 | `Authorization: Bearer <Codyssey에서 발급한 키>` |
-| 기본 모델 | `gpt-5-mini` |
-| 입력 | `model`, `messages` |
-| 생성 문구 | `choices[0].message.content` |
+| 항목           | 설정                                             |
+| -------------- | ------------------------------------------------ |
+| 기본 API 주소  | `https://copa.codyssey.kr/v1`                    |
+| POST 요청 주소 | `https://copa.codyssey.kr/v1/chat/completions`   |
+| 인증           | `Authorization: Bearer <Codyssey에서 발급한 키>` |
+| 기본 모델      | `gpt-5-mini`                                     |
+| 입력           | `model`, `messages`                              |
+| 생성 문구      | `choices[0].message.content`                     |
 
 `AI_BASE_URL`에는 `/chat/completions`를 붙이지 않습니다. `https://copa.codyssey.kr`처럼 호스트만 넣으면 `/v1`을 보완합니다. 키를 URL에 넣지 않도록 인증정보·쿼리가 없는 HTTPS 주소만 허용합니다.
 
@@ -90,29 +93,28 @@ JSON 스키마를 프롬프트에 포함해 출력 형식을 요청하고 Python
 git status
 git diff
 
-# 추가하거나 수정한 특정 파일을 선택하여 stage
+# 추가하거나 수정한 특정 파일을 선택하여 stage (분석 대상이 됨)
 git add main.py
 
 # API Key 없이, 전송할 요청 본문부터 확인
-python main.py commit --staged --dry-run
+python main.py commit --dry-run
 
 # 커밋 메시지 생성
-python main.py commit --staged
+python main.py commit
 
 # 실제 커밋을 만들기 전에 PR 초안도 생성
-python main.py pr --staged \
-  --context "커밋과 PR 설명 작성 시간을 줄이기 위해 도구 추가" \
-  --test-context "실제로 수행한 테스트와 그 결과를 여기에 입력"
+python main.py pr
 ```
 
 이 저장소를 처음 구현한 상태에서는 `main.py`, `gitgen/` 등이 untracked일 수 있습니다. 분석하려는 파일을 명시적으로 `git add`한 뒤 실행하세요. 이미 clone한 깨끗한 저장소라면 먼저 의미 있는 수정을 해야 합니다.
 
-생성된 내용을 검토한 다음 직접 커밋·push·PR 작성을 진행합니다. 테스트를 아직 하지 않았다면 `--test-context`를 생략합니다.
+생성된 내용을 검토한 다음 직접 커밋·push·PR 작성을 진행합니다.
 
 다른 저장소에서도 실행할 수 있습니다. 해당 저장소 루트로 이동한 뒤 이 도구의 Python과 `main.py`를 절대 경로로 지정하세요.
 
 ```bash
 cd /path/to/target-repository
+git add .
 /path/to/B3-2/.venv/bin/python /path/to/B3-2/main.py pr --dry-run
 ```
 
@@ -120,23 +122,20 @@ cd /path/to/target-repository
 
 옵션은 `commit` 또는 `pr` **뒤에** 지정합니다.
 
-| 옵션 | 기본값 | 설명 |
-| --- | --- | --- |
-| `--model` | `AI_MODEL` 또는 `gpt-5-mini` | Codyssey 모델 ID |
-| `--temperature` | 생략, 서버 기본값 | 생성 무작위성 0~2. 지원 모델에서만 지정 |
-| `--max-tokens` | `4096` | 추론을 포함한 생성 토큰 한도, 16~32768 |
-| `--staged` | 비활성 | staged 변경만 분석 |
-| `--safe-mode` | 항상 활성 | 민감정보 마스킹과 전송량 제한 |
-| `--context` | 없음 | 변경 배경·요구사항 |
-| `--test-context` | 없음 | 실제로 수행한 테스트와 결과 |
-| `--dry-run` | 비활성 | API 호출 없이 마스킹된 요청 본문 출력 |
+| 옵션            | 기본값                       | 설명                                    |
+| --------------- | ---------------------------- | --------------------------------------- |
+| `--model`       | `AI_MODEL` 또는 `gpt-5-mini` | Codyssey 모델 ID                        |
+| `--temperature` | 생략, 서버 기본값            | 생성 무작위성 0~2. 지원 모델에서만 지정 |
+| `--max-tokens`  | `4096`                       | 추론을 포함한 생성 토큰 한도, 16~32768  |
+| `--safe-mode`   | 비활성                       | 민감정보 마스킹과 전송량 제한 활성화    |
+| `--dry-run`     | 비활성                       | API 호출 없이 마스킹된 요청 본문 출력   |
 
 ```bash
 python main.py commit --model gpt-5-mini --max-tokens 4096
-python main.py pr --safe-mode --context "에러 메시지 개선"
+python main.py pr --safe-mode
 ```
 
-과제 예시의 `-model`, `-temperature`, `-max-tokens`, `-safe-mode`도 별칭으로 지원합니다. 안전 모드를 끄는 옵션은 제공하지 않습니다.
+과제 예시의 `-model`, `-temperature`, `-max-tokens`, `-safe-mode`도 별칭으로 지원합니다. 안전 모드는 기본적으로 꺼져 있으며, `--safe-mode` 옵션을 지정하면 활성화되어 민감 파일 제외, 비밀값 마스킹, 전송량 제한(최대 10개 파일·200줄)이 적용됩니다.
 
 temperature가 낮을수록 표현의 무작위성을 줄이는 방향으로 작동하지만, 같은 결과나 사실 정확성을 보장하지는 않습니다. 모델별 지원 범위가 달라 기본 실행에서는 이 필드를 보내지 않습니다. `--temperature 0.4`처럼 명시하면 지정값을 전달하며, 해당 모델이 지원하지 않아 HTTP 400이 발생하면 옵션을 생략하도록 안내합니다.
 
@@ -144,11 +143,11 @@ temperature가 낮을수록 표현의 무작위성을 줄이는 방향으로 작
 
 ## 5. 어떤 변경을 분석하나요?
 
-- 기본 실행은 staged(`git diff --cached`)와 unstaged(`git diff`) 변경을 구분해서 전달합니다.
-- `--staged`는 실제 다음 커밋에 넣을 변경의 초안을 만들 때 사용합니다.
-- untracked 파일은 목록만 안내하고 내용을 읽거나 전송하지 않습니다. 필요하면 `git add` 후 실행하세요.
-- 변경이 없거나 선택한 범위에 diff가 없으면 안내 메시지를 출력하고 정상 종료합니다. API 호출은 0회입니다.
-- PR 명령도 **현재 작업 공간의 변경**을 분석합니다. 이미 커밋된 브랜치 전체와 기준 브랜치를 비교하지 않습니다. 초안은 커밋 전에 생성하세요.
+- **staged 변경(`git diff --cached`)만** 분석합니다. 초안이 실제 다음 커밋에 들어갈 내용과 일치하도록 하기 위함입니다.
+- 아직 `git add` 하지 않은 unstaged 변경은 분석하지 않습니다. 커밋할 변경을 `git add`로 먼저 stage하세요.
+- untracked 파일도 목록만 안내하고 내용을 읽거나 전송하지 않습니다. 필요하면 `git add` 후 실행하세요.
+- staged 변경이 없으면 `git add`로 stage하라는 안내 메시지를 출력하고 정상 종료합니다. API 호출은 0회입니다.
+- PR 명령도 **staged 변경**을 분석합니다. 이미 커밋된 브랜치 전체와 기준 브랜치를 비교하지 않습니다. 초안은 커밋 전에 생성하세요.
 - 병합 충돌이 있으면 먼저 해결해야 합니다. binary 파일은 Git이 제공하는 변경 사실만 전달합니다.
 
 Git 수집에는 `git status`와 `git diff`만 사용합니다. 인덱스나 작업 파일을 수정하지 않으며 외부 diff 프로그램도 실행하지 않습니다.
@@ -179,14 +178,13 @@ fix: 출력 메시지 수정
 
 --- PR Body ---
 ## Why
-- 변경 배경 확인 필요: --context로 변경 이유를 제공하세요.
+- 변경 배경 확인 필요
 
 ## What
 - app.py의 출력 메시지 변경
 
 ## How to Test
-- 미실행: 테스트 실행 정보가 제공되지 않았습니다. 아래 제안은 직접 검증하세요.
-- 미실행: python app.py로 변경된 출력 확인
+- python app.py를 실행하여 변경된 출력 메시지를 확인
 
 ----------------------
 ```
@@ -194,7 +192,7 @@ fix: 출력 메시지 수정
 결과는 표준 출력(stdout), 진행 상황·오류·API 호출 횟수는 표준 오류(stderr)에 출력합니다. 생성 텍스트를 파일로 저장하려면:
 
 ```bash
-python main.py pr --staged > /tmp/pr-draft.txt
+python main.py pr > /tmp/pr-draft.txt
 ```
 
 이 파일에는 변경 요약과 구획 헤더도 포함되므로 PR 작성 시 필요한 제목·본문 구획을 복사합니다.
@@ -203,20 +201,20 @@ python main.py pr --staged > /tmp/pr-draft.txt
 
 커밋 제목은 최대 72자이며 50자를 넘으면 짧게 쓰도록 안내합니다. PR 제목은 최대 80자입니다. 앞뒤 공백을 제거한 Python `len()` 기준입니다. 제목의 줄바꿈·제어 문자, 빈 필드, 잘못된 JSON과 배열도 검증합니다.
 
-커밋 본문에는 핵심 변경 1~2개를 불릿으로 넣습니다. PR의 Why·What·How to Test 헤더와 불릿은 Python에서 렌더링합니다. 배경이 없으면 Why를 확인 필요 문구로 대체하고, 테스트 정보가 없으면 미실행 안내를 덧붙입니다. 형식 검사만으로 의미의 정확성을 보장할 수 없으므로 변경 내용·배경·테스트 사실은 사람이 확인해야 합니다.
+커밋 본문에는 핵심 변경 1~2개를 불릿으로 넣습니다. PR의 Why·What·How to Test 헤더와 불릿은 Python에서 렌더링합니다. 형식 검사만으로 의미의 정확성을 보장할 수 없으므로 변경 내용·배경·테스트 사실은 사람이 확인해야 합니다.
 
-| 상황 | 처리 / 대응 |
-| --- | --- |
-| Python 3.9 이하 | Python 3.10 이상으로 실행 |
-| 저장소 밖·하위 폴더 | `.git`이 있는 저장소 루트로 이동 |
-| API Key 없음 | 프로젝트 루트 `.env`의 `AI_API_KEY` 입력 또는 환경변수 설정. 미리보기는 `--dry-run` 사용 |
-| HTTP 400 | `--temperature` 생략, 모델의 지원 파라미터·토큰 한도 확인 |
-| HTTP 401 / 403 / 404 | Codyssey의 OpenAI 호환 키 / 프로토콜·모델 권한 / 기본 주소·모델명 확인 |
-| HTTP 429 | Codyssey 콘솔의 잔여 토큰·키별 한도·요청 제한 확인 |
-| 서버·네트워크 오류 | 네트워크 확인 후 재실행. 자동 재시도 없음 |
-| 응답 미완료·출력 잘림 | `--max-tokens`를 늘리거나 분석 범위 축소 |
-| JSON·제목·필드 규칙 위반 | 위반 규칙을 전달해 1회 재생성 |
-| 재생성도 실패 | 오류를 표시하고 종료. 잘못된 초안을 최종 결과로 출력하지 않음 |
+| 상황                     | 처리 / 대응                                                                              |
+| ------------------------ | ---------------------------------------------------------------------------------------- |
+| Python 3.9 이하          | Python 3.10 이상으로 실행                                                                |
+| 저장소 밖·하위 폴더      | `.git`이 있는 저장소 루트로 이동                                                         |
+| API Key 없음             | 프로젝트 루트 `.env`의 `AI_API_KEY` 입력 또는 환경변수 설정. 미리보기는 `--dry-run` 사용 |
+| HTTP 400                 | `--temperature` 생략, 모델의 지원 파라미터·토큰 한도 확인                                |
+| HTTP 401 / 403 / 404     | Codyssey의 OpenAI 호환 키 / 프로토콜·모델 권한 / 기본 주소·모델명 확인                   |
+| HTTP 429                 | Codyssey 콘솔의 잔여 토큰·키별 한도·요청 제한 확인                                       |
+| 서버·네트워크 오류       | 네트워크 확인 후 재실행. 자동 재시도 없음                                                |
+| 응답 미완료·출력 잘림    | `--max-tokens`를 늘리거나 분석 범위 축소                                                 |
+| JSON·제목·필드 규칙 위반 | 위반 규칙을 전달해 1회 재생성                                                            |
+| 재생성도 실패            | 오류를 표시하고 종료. 잘못된 초안을 최종 결과로 출력하지 않음                            |
 
 정상 생성은 API 호출 1회, 형식 수정이 필요한 경우 총 2회입니다. 실패한 HTTP 요청도 호출 횟수에 포함합니다. HTTP 클라이언트에는 자동 재시도를 설정하지 않았습니다. 연결·읽기 대기 timeout은 각각 30초이며, 전체 실행 시간 상한을 뜻하지 않습니다.
 
@@ -226,25 +224,16 @@ python main.py pr --staged > /tmp/pr-draft.txt
 
 diff는 기본적으로 Codyssey의 OpenAI 호환 API로 전송됩니다. `--dry-run`으로 요청 주소와 마스킹된 실제 요청 본문을 먼저 확인할 수 있습니다. Key를 보내는 인증 헤더는 미리보기에 포함되지 않습니다.
 
-| 정책 | 기준 |
-| --- | --- |
-| 기본 제외 | `.env`, `.env.*`, `*.env`, 개인 키·인증서 파일, `.ssh/`, `.aws/`, `.gnupg/` 등 |
-| 이름 변경 | 이전 경로 또는 새 경로가 제외 대상이면 해당 변경 제외 |
-| 여러 줄 비밀값 | 삼중 따옴표로 비밀값을 할당하는 패턴이 보이면 해당 파일의 diff 전체 제외 |
-| 마스킹 | 설정된 API Key, 알려진 토큰 형태, 비밀번호·토큰 할당, 이메일, 인증 헤더·URL 인증정보, 개인 키 블록 |
-| 적용 범위 | diff, 전송할 파일명, 변경 배경·테스트 맥락, 로그와 생성 결과 |
-| 파일 수 | 경로순 최대 10개 변경 항목. 이름 변경은 한 항목으로 취급 |
-| diff 줄 수 | staged/unstaged 합계 최대 200줄. 헤더 포함 |
-| 사용자 맥락 | 변경 배경·테스트 정보 각각 최대 1,000자 |
-| Git 데이터 | JSON을 요청 문자열에 넣는 이스케이프까지 포함해 최대 12,000자 |
-| 최종 REST 요청 | 프롬프트·스키마·수정 요청 포함 JSON 본문 최대 20,000자. 초과 시 전송 중단 |
-| 응답 크기 | 최대 256,000바이트 |
+| 정책           | 기준                                                                                               |
+| -------------- | -------------------------------------------------------------------------------------------------- |
+| 기본 제외      | `.env`, `.env.*`, `*.env`, 개인 키·인증서 파일(`.pem`, `.key` 등), `.ssh/`, `.aws/`, `.gnupg/`       |
+| 이름 변경      | 이전 경로 또는 새 경로가 제외 대상이면 해당 변경 제외                                              |
+| 마스킹         | 설정된 API Key, 알려진 토큰 형태(sk-, ghp- 등), 비밀번호·토큰 할당, 이메일, 인증 헤더, 개인 키 블록 |
+| 적용 범위      | diff 본문, 전송할 파일명, 오류/안내 로그                                                            |
+| 파일 수 제한   | staged 변경 경로순 최대 10개 파일                                                                  |
+| diff 줄 수     | staged 변경 최대 200줄 (초과 시 잘림 및 부분 분석 안내)                                            |
 
-제외되거나 잘린 입력이 있으면 “부분 분석”으로 표시합니다. diff 줄은 중간에서 자르지 않으며, 전체 변경을 설명한 결과로 간주하면 안 됩니다. 긴 한 줄도 생략될 수 있습니다. 문자·줄 수는 토큰 수와 다릅니다.
-
-정규식으로 모든 비밀·개인정보를 탐지할 수는 없습니다. 특히 임의 형식의 비밀 문자열과 인코딩된 정보는 빠질 수 있습니다. 민감한 코드를 전송하지 않도록 사용자도 확인해야 합니다. 원본 diff·Key·인증 헤더·API 오류 응답 전체는 로그에 남기지 않습니다.
-
-여러 줄 비밀값은 diff의 삭제·추가 줄이나 잘린 코드만으로 문자열의 끝을 안전하게 판단하기 어려워 파일 전체를 제외합니다. 사용자 맥락에서는 같은 패턴 이후의 내용을 모두 마스킹합니다.
+제외되거나 잘린 입력이 있으면 “부분 분석”으로 표시합니다.
 
 사용 한도와 모델별 차감 기준은 Codyssey API 콘솔에서 확인하고, 불필요한 반복 실행을 피하세요. 데이터 보존 방식은 Codyssey 및 연결된 제공자의 정책을 따릅니다.
 
@@ -255,31 +244,31 @@ python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-임시 Git 저장소와 모의 HTTP 응답으로 Git 상태, 신규·삭제·이름 변경·binary·특수 파일명, 마스킹, 전송 한도, 제목 길이, API 오류와 최대 2회 호출, CLI 전체 흐름을 확인합니다. 테스트는 실제 API Key를 사용하지 않고, 예상하지 않은 API 호출은 차단합니다.
+임시 Git 저장소와 모의 HTTP 응답으로 Git 상태, 신규·삭제·이름 변경·binary 파일명, 마스킹, 전송 한도(10개 파일·200줄), 제목 길이, commit/pr 프롬프트 격리, API 오류와 최대 2회 호출, CLI 전체 흐름을 확인합니다.
 
-2026-09-10 검증 결과: Python 3.12에서 **159개 자동 테스트 통과**. `.env` 로딩·환경변수 우선순위·키 비노출, Codyssey 요청 주소·인증·응답 형식과 재생성 흐름을 검증했습니다. 이후 실제 키로 Codyssey의 `gpt-5-mini`를 호출하여 커밋·PR 생성을 각각 1회 요청으로 확인했습니다. [실제 API 검증 기록](docs/API_VERIFICATION.md). Python 3.10 실행은 아직 검증하지 않았습니다.
+검증 결과: Python 3.12에서 **144개 자동 테스트 통과**. `.env` 로딩·환경변수 우선순위·키 비노출, Codyssey 요청 주소·인증·응답 형식과 재생성 흐름, commit/pr 전용 프롬프트 분리 격리를 검증했습니다. [실제 API 검증 기록](docs/API_VERIFICATION.md). Python 3.10 실행은 아직 검증하지 않았습니다.
 
 다른 변경 내용으로 연결과 출력 품질을 다시 확인하려면 다음 명령을 사용하세요.
 
 ```bash
-python main.py commit --staged
-python main.py pr --staged --context "실제 변경 이유"
+python main.py commit
+python main.py pr
 ```
 
 전송 가능한 staged diff가 있어야 호출됩니다. 실제 생성 결과를 diff와 대조해 사실성·누락·표현을 확인하고, 과제 제출 시 실제 실행 화면이나 출력 예시를 추가하세요.
 
 ## 10. 구조와 제출
 
-| 파일 | 역할 |
-| --- | --- |
-| `main.py` / `gitgen/cli.py` | 진입점·옵션·실행 흐름 |
-| `gitgen/config.py` | 환경변수·프로젝트 루트 `.env`에서 키·기본 주소·모델 로딩 |
-| `gitgen/git_context.py` | Git 상태와 diff 수집 |
-| `gitgen/safety.py` | 제외·마스킹·입력 제한 |
-| `gitgen/prompts.py` | 프롬프트·JSON 스키마 |
-| `gitgen/api_client.py` | Codyssey Chat Completions 요청·응답·HTTP 오류 |
-| `gitgen/generation.py` / `validators.py` | 결과 검증·최대 1회 수정 요청 |
-| `gitgen/render.py` | 커밋·PR 텍스트 렌더링 |
-| `tests/` | 비용 없는 자동 검증 |
+| 파일                                     | 역할                                                     |
+| ---------------------------------------- | -------------------------------------------------------- |
+| `main.py` / `gitgen/cli.py`              | 진입점·옵션·실행 흐름                                    |
+| `gitgen/config.py`                       | 환경변수·프로젝트 루트 `.env`에서 키·기본 주소·모델 로딩 |
+| `gitgen/git_context.py`                  | Git 상태와 diff 수집                                     |
+| `gitgen/safety.py`                       | 제외·마스킹·입력 제한                                    |
+| `gitgen/prompts.py`                      | 커밋·PR 전용 분리 프롬프트·JSON 스키마                    |
+| `gitgen/api_client.py`                   | Codyssey Chat Completions 요청·응답·HTTP 오류            |
+| `gitgen/generation.py` / `validators.py` | 결과 검증·최대 1회 수정 요청                             |
+| `gitgen/render.py`                       | 커밋·PR 텍스트 렌더링                                    |
+| `tests/`                                 | 비용 없는 자동 검증                                      |
 
 실제 Key로 commit/pr 생성 확인과 결과 기록을 완료했습니다. 제출 전에는 소스와 문서를 GitHub에 push해야 합니다. 도구가 원격 작업을 대신하지 않으므로 개발자가 직접 진행합니다. 선택 보너스인 이전 미션 PR·팀 컨벤션 설정·안전 모드 정책 커스터마이징은 이번 필수 구현에 포함하지 않았습니다.

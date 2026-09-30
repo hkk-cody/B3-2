@@ -1,4 +1,4 @@
-"""Codyssey connection settings from the environment or repository .env."""
+"""설정 로드 및 정규화."""
 
 from dataclasses import dataclass, field
 import os
@@ -6,7 +6,6 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .errors import GitgenError
-
 
 DEFAULT_BASE_URL = "https://copa.codyssey.kr/v1"
 DEFAULT_MODEL = "gpt-5-mini"
@@ -20,55 +19,48 @@ class Settings:
 
 
 def normalize_base_url(value: str) -> str:
+    """AI API 베이스 URL 정규화."""
     value = value.strip().rstrip("/")
     try:
-        parsed = urlsplit(value)
-        invalid = (
-            not value.isascii() or any(ch.isspace() or ord(ch) < 32 for ch in value)
-            or parsed.scheme != "https" or not parsed.hostname
-            or parsed.username is not None or parsed.password is not None
-            or parsed.query or parsed.fragment or parsed.port == 0
-            or parsed.path.endswith(("/chat/completions", "/responses"))
-        )
+        p = urlsplit(value)
+        _ = p.port  # 포트 형식 검증 (유효하지 않은 포트 시 ValueError 발생)
+        if (
+            p.scheme != "https" or not p.hostname or " " in value or "\n" in value
+            or p.username or p.password or p.query or p.fragment
+            or value.endswith(("/chat/completions", "/responses"))
+        ):
+            raise GitgenError("AI_BASE_URL에는 인증정보·쿼리 없는 HTTPS 기본 주소를 입력하세요. 예: https://copa.codyssey.kr/v1")
     except ValueError:
-        invalid = True
-    if invalid:
-        raise GitgenError("AI_BASE_URL에는 인증정보·쿼리 없는 HTTPS 기본 주소를 입력하세요. 예: https://copa.codyssey.kr/v1")
-    return value + "/v1" if not parsed.path else value
+        raise GitgenError("AI_BASE_URL 형식이 올바르지 않습니다.") from None
 
-
-def _env_values(root: Path) -> dict:
-
-    env_file = root / ".env"
-    if not env_file.exists():
-        return {}
-    if not env_file.is_file():
-        raise GitgenError("프로젝트 루트의 .env는 일반 텍스트 파일이어야 합니다.")
-    try:
-        from dotenv import dotenv_values
-    except ImportError:
-        raise GitgenError(".env 로딩에 필요한 의존성이 없습니다. python -m pip install -r requirements.txt를 실행하세요.") from None
-    try:
-        # Explicit path: do not search parent directories or the tool's own repo.
-        # Parse as data; do not expand other variables or load unrelated settings.
-        return dotenv_values(env_file, encoding="utf-8-sig", interpolate=False)
-    except (OSError, UnicodeError):
-        raise GitgenError(".env를 읽을 수 없습니다. 파일 권한과 UTF-8 인코딩을 확인하세요.") from None
+    return value if p.path else value + "/v1"
 
 
 def load_settings(root: Path) -> Settings:
-    values = _env_values(root)
-
-    def setting(name: str, default: str = "") -> str:
-        return os.environ.get(name, "").strip() or (values.get(name) or "").strip() or default
-
-    key = setting("AI_API_KEY")
-    if key:
+    """환경변수 및 .env 파일에서 설정 로드."""
+    env_values = {}
+    env_file = root / ".env"
+    if env_file.exists():
+        if not env_file.is_file():
+            raise GitgenError("프로젝트 루트의 .env는 일반 텍스트 파일이어야 합니다.")
         try:
-            os.environ["AI_API_KEY"] = key
-        except (ValueError, UnicodeError):
-            raise GitgenError(".env의 AI_API_KEY 형식이 올바르지 않습니다. API Key만 한 줄로 입력하세요.") from None
-    return Settings(key, normalize_base_url(setting("AI_BASE_URL", DEFAULT_BASE_URL)), setting("AI_MODEL", DEFAULT_MODEL))
+            from dotenv import dotenv_values
+            env_values = dotenv_values(env_file, encoding="utf-8-sig", interpolate=False) or {}
+        except ImportError:
+            raise GitgenError(".env 로딩에 필요한 의존성이 없습니다. python -m pip install -r requirements.txt를 실행하세요.") from None
+        except Exception:
+            raise GitgenError(".env를 읽을 수 없습니다. 파일 권한과 UTF-8 인코딩을 확인하세요.")
+
+    def get_val(key: str, default: str = "") -> str:
+        return os.environ.get(key, "").strip() or (env_values.get(key) or "").strip() or default
+
+    api_key = get_val("AI_API_KEY")
+    if api_key:
+        os.environ["AI_API_KEY"] = api_key
+
+    base_url = normalize_base_url(get_val("AI_BASE_URL", DEFAULT_BASE_URL))
+    model = get_val("AI_MODEL", DEFAULT_MODEL)
+    return Settings(api_key=api_key, base_url=base_url, model=model)
 
 
 def load_api_key(root: Path) -> str:

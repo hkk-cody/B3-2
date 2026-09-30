@@ -4,7 +4,7 @@ import os
 import pytest
 import requests
 
-from conftest import response_for
+from tests.conftest import git, response_for
 from gitgen.cli import main
 from gitgen.config import DEFAULT_BASE_URL, DEFAULT_MODEL, load_api_key, load_settings, normalize_base_url
 from gitgen.errors import GitgenError
@@ -70,12 +70,13 @@ def test_dotenv_directory_rejected(tmp_path):
 def test_cli_uses_dotenv_and_redacts_request(repo, monkeypatch, capsys, commit_draft):
     (repo / ".env").write_text("AI_API_KEY=fake-dotenv-key\n")
     (repo / "app.py").write_text("print('fake-dotenv-key')\n")
+    git(repo, "add", "app.py")
     seen = []
     def post(*args, **kwargs):
         seen.append(kwargs)
         return response_for(commit_draft)
     monkeypatch.setattr(requests, "post", post)
-    assert main(["commit"]) == 0
+    assert main(["commit", "--safe-mode"]) == 0
     out, err = capsys.readouterr()
     assert "fake-dotenv-key" not in out + err
     assert seen[0]["headers"]["Authorization"] == "Bearer fake-dotenv-key"
@@ -85,7 +86,8 @@ def test_cli_uses_dotenv_and_redacts_request(repo, monkeypatch, capsys, commit_d
 def test_dry_run_redacts_dotenv_key_without_api(repo, capsys):
     (repo / ".env").write_text("AI_API_KEY=fake-dotenv-key\n")
     (repo / "app.py").write_text("print('fake-dotenv-key')\n")
-    assert main(["pr", "--dry-run"]) == 0
+    git(repo, "add", "app.py")
+    assert main(["pr", "--dry-run", "--safe-mode"]) == 0
     out, err = capsys.readouterr()
     assert "fake-dotenv-key" not in out + err
     assert "API 호출 횟수: 0회" in err
@@ -128,6 +130,7 @@ def test_invalid_api_address_has_safe_error(base_url):
 def test_cli_model_overrides_dotenv_and_shows_endpoint(repo, capsys):
     (repo / ".env").write_text("AI_MODEL=gpt-5-mini\nAI_BASE_URL=https://copa.codyssey.kr\n")
     (repo / "app.py").write_text("changed\n")
+    git(repo, "add", "app.py")
     assert main(["commit", "--dry-run", "--model", "gpt-5.4-mini"]) == 0
     out, err = capsys.readouterr()
     assert json.loads(out.split("\n", 1)[1])["model"] == "gpt-5.4-mini"
