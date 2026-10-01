@@ -19,6 +19,12 @@ Git 저장소의 최근 변경 사항(`git status` 및 `git diff`)을 분석하�
 ├── tests/                  # 핵심 기능 테스트 (pytest)
 │   ├── conftest.py
 │   └── test_gitgen.py
+├── docs/                   # 상세 가이드 및 검증 문서
+│   ├── API_VERIFICATION.md     # 실제 API 호출 검증 기록
+│   ├── PRACTICE_GUIDE.md       # CLI 실습 가이드
+│   ├── PARAMETER_COMPARISON.md # temperature/max-tokens 실험 결과
+│   └── LEARNING_GUIDE.md       # B3-2 학습 개념서
+├── requirements.txt        # 패키지 의존성 파일
 ├── .env                    # 환경변수 파일 (git 추적 제외)
 ├── .env.example            # 환경변수 설정 예시
 ├── .gitignore              # Git 추적 제외 규칙
@@ -177,7 +183,7 @@ feat: Git 변경 사항 기반 커밋 메시지 및 PR 초안 자동 생성 도�
 | :--- | :--- | :--- | :--- |
 | `--model` | `-model` | `gpt-5-mini` | 사용할 AI 모델 이름 지정 |
 | `--temperature` | `-temperature` | `1.0` | AI 답변 생성 다양성 제어 (0.0 ~ 2.0) |
-| `--max-tokens` | `-max-tokens` | commit: `2000`<br>pr: `2500` | 생성할 최대 토큰 수 제어 |
+| `--max-tokens` | `-max-tokens` | commit: `2000`<br>pr: `2500` | 생성할 최대 토큰 수 제어 (16 ~ 32768) |
 | `--safe-mode` | `-safe-mode` | `False` | 민감정보 마스킹 및 diff 전송량 제한 활성화 |
 
 ---

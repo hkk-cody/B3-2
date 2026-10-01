@@ -24,7 +24,7 @@ AI_MODEL=gemini-flash-latest
 ```
 
 ### 3) 실습용 Git 변경 사항 생성
-실습을 위해 임의의 파일을 생성하거나 수정합니다:
+실습을 위해 임의의 파일을 생성하거나 수정합니다: 
 ```bash
 echo "print('hello world')" > sample.py
 ```
@@ -51,9 +51,9 @@ options:
   --model MODEL, -model MODEL
                         사용할 AI 모델 이름 (기본값: gemini-flash-latest)
   --temperature TEMPERATURE, -temperature TEMPERATURE
-                        샘플링 온도 (기본값: 1.0)
+                        샘플링 온도 (범위: 0.0 ~ 2.0, 기본값: 1.0)
   --max-tokens MAX_TOKENS, -max-tokens MAX_TOKENS
-                        생성할 최대 토큰 수 (기본값: 2000)
+                        생성할 최대 토큰 수 (범위: 16 ~ 32768, 기본값: 2000)
   --safe-mode, -safe-mode
                         민감 정보 마스킹 및 diff 전송량 제한 안전 모드
 ```

@@ -1,0 +1,178 @@
+# AI 파라미터(`temperature`, `max-tokens`) 비교 및 실제 실행 결과
+
+이 문서는 AI API의 핵심 생성 파라미터인 **`temperature`**(온도)와 **`max-tokens`**(최대 토큰 수)를 변경했을 때, 동일한 코드 변경 사항(Git diff)에 대해 **실제 생성 결과가 어떻게 달라지는지 직접 실행하고 비교 분석한 결과 보고서**입니다.
+
+---
+
+## 🧪 0. 실험 환경 및 동일 입력 조건
+
+- **실험 대상 Git 변경 사항**: 2개 파일 변경, 29줄 diff (`docs/LEARNING_GUIDE.md`, `docs/PRACTICE_GUIDE.md`의 공백 및 포맷 정리)
+- **사용 모델**: `gpt-5.4-mini` (Google Gemini OpenAI-compatible API)
+- **실행 명령**: `python main.py commit` 및 `python main.py pr`
+
+---
+
+## 🌡️ 1. `temperature`(온도) 비교 실험
+
+`temperature`는 **AI의 다음 단어 선택 시 무작위성(창의성 vs 정형성)을 조절**하는 파라미터입니다. (0.0 ~ 2.0)
+
+### 1) 실행 명령별 실제 터미널 출력 결과
+
+#### ❄️ Case A: 낮은 온도 (`--temperature 0.1`)
+가장 확률이 높은 단어만 선택하여 사실 위주로 아주 간결하고 정형화된 출력을 만듭니다.
+
+```bash
+python main.py commit --temperature 0.1
+```
+
+```text
+--- Commit Message ---
+docs: 가이드 문서의 불필요한 공백 정리
+
+Changed files: docs/LEARNING_GUIDE.md, docs/PRACTICE_GUIDE.md
+
+- LEARNING_GUIDE.md의 불필요한 빈줄/공백 정리
+- PRACTICE_GUIDE.md의 문장 끝 공백 추가(포맷 일관성 유지)
+----------------------
+```
+
+---
+
+#### ☕ Case B: 중간 온도 (`--temperature 0.7`)
+자연스러운 문장 흐름과 균형 잡힌 어휘('트레일링 공백', '트레일링 스페이스')를 사용합니다.
+
+```bash
+python main.py commit --temperature 0.7
+```
+
+```text
+--- Commit Message ---
+docs: 문서 가이드의 불필요한 트레일링 공백 정리
+
+- 변경 파일: docs/LEARNING_GUIDE.md, docs/PRACTICE_GUIDE.md
+- LEARNING_GUIDE.md: 빈 줄의 불필요한 공백 제거로 포맷 정리
+- PRACTICE_GUIDE.md: 실습 설명 라인 끝의 트레일링 스페이스 정리
+----------------------
+```
+
+---
+
+#### 🔥 Case C: 높은 온도 (`--temperature 1.5`)
+어휘 선택의 폭이 넓어지고, 매 실행마다 제목이나 불릿 표현이 다채롭게 변화합니다.
+
+```bash
+python main.py commit --temperature 1.5
+```
+
+```text
+--- Commit Message ---
+docs: 가이드 문서의 트레일링 공백 정리
+
+docs/LEARNING_GUIDE.md, docs/PRACTICE_GUIDE.md
+- LEARNING_GUIDE.md: 목록 아래의 불필요한 빈 줄/트레일링 공백 정리
+- PRACTICE_GUIDE.md: 실습 설명 문장 끝의 줄 끝 공백 정리
+----------------------
+```
+
+---
+
+### 2) `temperature` 실험 결과 분석 요약
+
+| 구분 | 낮은 온도 (`0.1 ~ 0.3`) | 중간 온도 (`0.7 ~ 1.0`) | 높은 온도 (`1.5 이상`) |
+| :--- | :--- | :--- | :--- |
+| **비유** | ❄️ 차분한 모범생 | ☕ 자연스러운 동료 | 🔥 상상력 풍부한 작가 |
+| **재현성** | 매번 실행해도 **거의 똑같은 결과** | 실행할 때마다 **약간씩 표현 변화** | 매번 **매우 다른 표현과 서술 방식** |
+| **어휘 선택** | 가장 안전하고 표준적인 단어 위주 | 상황에 맞는 자연스러운 단어 위주 | 참신하거나 다양한 어휘 시도 |
+| **권장 용도** | **커밋 메시지, 정형화된 코드 요약** | **일반 PR 본문, 설명문 작성** | 브레인스토밍, 창의적 글쓰기 |
+
+> **💡 핵심 인사이트**: 커밋 메시지는 사실에 기반한 일관된 포맷이 중요하므로, **`temperature 0.2 ~ 0.5`** 수준의 낮은 온도로 설정할 때 가장 안정적이고 깔끔한 결과가 나옵니다.
+
+---
+
+## 📏 2. `max-tokens`(최대 생성 토큰 수) 비교 실험
+
+`max-tokens`는 **AI가 생성할 수 있는 텍스트의 최대 길이 상한선**을 지정합니다.
+
+### 1) 실행 명령별 실제 터미널 출력 결과
+
+#### ⚡ Case A: 극단적으로 작은 토큰 (`--max-tokens 50`)
+AI가 토큰 예산이 매우 부족함을 인지하고, 최소한의 정보만으로 압축하여 출력합니다.
+
+```bash
+python main.py commit --max-tokens 50
+```
+
+```text
+--- Commit Message ---
+docs: 문서의 트레일링 공백 정리(LEARNING_GUIDE, PRACTICE_GUIDE)
+
+변경된 파일: docs/LEARNING_GUIDE.md, docs/PRACTICE_GUIDE.md
+
+- LEARNING_GUIDE.md의 빈 줄에 공백 추가로 문서 개행/표시 정리
+- PRACTICE_GUIDE.md의 ':' 뒤에 공백 추가해 문장 포매팅 일관성 확보
+----------------------
+```
+- **특징**: 군더더기 서술을 없애고 제목과 파일명, 1~2개 불릿만으로 짧게 작성됩니다.
+- **주의점**: 만약 토큰 제한을 20~30 수준으로 지나치게 낮추면 문장이 중간에 잘려버릴 수 있습니다.
+
+---
+
+#### 📜 Case B: 충분한 토큰 (`--max-tokens 2000`)
+충분한 분량을 활용하여 변경 배경(Why), 구현 세부 내용(What), 구체적인 검증 명령어(How to Test)까지 풍부하게 작성합니다.
+
+```bash
+python main.py pr --max-tokens 2000
+```
+
+```text
+--- PR Title ---
+docs: 가이드 문서의 불필요한 공백 정리
+
+--- PR Body ---
+## Why
+- 학습/실습 가이드 문서에 불필요한 공백이 포함되어 있어 문서 품질과 일관성을 개선할 필요가 있었습니다.
+- 사소한 whitespace 변경이라도 추후 diff 가독성 저하를 막고, 문서 포맷을 깔끔하게 유지하기 위해 정리했습니다.
+
+## What
+- `docs/LEARNING_GUIDE.md`에서 목록 이후에 남아 있던 불필요한 공백 라인을 정리했습니다.
+- `docs/PRACTICE_GUIDE.md`의 안내 문장 끝에 포함된 trailing space를 제거했습니다.
+- 문서 내용 자체는 변경하지 않고, 포맷상 불필요한 공백만 최소 수정했습니다.
+
+## How to Test
+- 각 문서를 열어 문장 끝과 빈 줄에 불필요한 공백이 제거되었는지 확인합니다.
+- Markdown 렌더링 결과에서 제목, 목록, 코드 블록 표시가 기존과 동일하게 보이는지 확인합니다.
+- `git diff`로 확인했을 때 의도한 whitespace 변경만 포함되어 있는지 검증합니다:
+  - git diff -- docs/LEARNING_GUIDE.md docs/PRACTICE_GUIDE.md
+- trailing whitespace 검사 명령 실행:
+  - grep -nP "[ \t]+$" docs/LEARNING_GUIDE.md docs/PRACTICE_GUIDE.md
+----------------
+```
+- **특징**: 각 섹션별로 2~3개의 구체적인 불릿이 작성되고, 실행해볼 수 있는 구체적인 터미널 명령어(`git diff`, `grep`)까지 제안해 줍니다.
+
+---
+
+### 2) `max-tokens` 실험 결과 분석 요약
+
+| 구분 | 작은 토큰 (`50 ~ 200`) | 큰 토큰 (`1500 ~ 2500`) |
+| :--- | :--- | :--- |
+| **내용 상세도** | 핵심 키워드 중심의 압축된 요약 | 배경, 세부 내역, 검증 절차까지 상세 기술 |
+| **비용/속도** | 생성 토큰이 적어 **속도가 매우 빠르고 비용 절약** | 작성이 상세해져 **소요 시간과 토큰 소모 증가** |
+| **잠재적 위험** | 제한이 너무 작으면 **문장이 중간에 잘릴 위험** 있음 | 토큰 제한으로 인한 잘림 현상 전혀 없음 |
+| **권장 용도** | **커밋 메시지** (`commit`: 기본 2000 충분) | **PR 초안** (`pr`: 기본 2500 권장) |
+
+---
+
+## 🎯 3. 최종 권장 파라미터 조합
+
+실제 실험을 통해 검증된 최적의 CLI 옵션 조합은 다음과 같습니다:
+
+```bash
+# 1. 커밋 메시지: 정형화되고 정확한 요약 (낮은 온도)
+python main.py commit --temperature 0.3
+
+# 2. PR 초안: 풍부한 설명과 구체적인 테스트 검증 절차 (중간 온도 + 충분한 토큰)
+python main.py pr --temperature 0.7 --max-tokens 2500
+
+# 3. 보안이 중요한 환경: 안전 모드와 함께 사용
+python main.py commit --safe-mode --temperature 0.3
+```

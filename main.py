@@ -173,14 +173,14 @@ def add_common_arguments(parser: argparse.ArgumentParser, default_max_tokens: in
         "-temperature",
         type=float,
         default=DEFAULT_TEMPERATURE,
-        help=f"샘플링 온도 (기본값: {DEFAULT_TEMPERATURE})",
+        help=f"샘플링 온도 (범위: 0.0 ~ 2.0, 기본값: {DEFAULT_TEMPERATURE})",
     )
     parser.add_argument(
         "--max-tokens",
         "-max-tokens",
         type=int,
         default=default_max_tokens,
-        help=f"생성할 최대 토큰 수 (기본값: {default_max_tokens})",
+        help=f"생성할 최대 토큰 수 (범위: 16 ~ 32768, 기본값: {default_max_tokens})",
     )
     parser.add_argument(
         "--safe-mode",
