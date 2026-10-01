@@ -1,6 +1,6 @@
 # Git 변경 사항 기반 커밋·PR 초안 생성기 기획서
 
-> 구현 현황 (2026-09-10): Codyssey 콘솔 안내에 맞춰 OpenAI 호환 Chat Completions API와 기본 모델 `gpt-5-mini`를 사용한다. CLI, Git 수집, 안전 모드, 출력 검증·재생성, `--dry-run`, `.env` 설정, README와 자동 테스트를 구현했고 Python 3.12에서 모의 API 테스트 161개를 통과했다. 실제 키로 커밋·PR 생성을 각각 API 1회로 검증했으며 [실제 출력 기록](docs/API_VERIFICATION.md)을 남겼다. GitHub 제출은 아직 수행하지 않았다. 아래는 최초 기획이며, 현재 사용법과 확정된 정책은 [README.md](README.md)를 따른다.
+> 구현 현황 (2026-09-30): OpenAI 및 Google Gemini 호환 API를 지원하며, 과제 명세에 맞게 5개 핵심 모듈(`config.py`, `git_utils.py`, `prompts.py`, `validator.py`, `ai_client.py`)과 `main.py`로 직관적이고 심플하게 구현되었다. CLI(`commit`, `pr`), Git 수집, 안전 모드(`--safe-mode`), 출력 검증, `.env` 로더, 단위 테스트(`test_gitgen.py`)를 갖추었으며 실제 키를 통한 API 1회 호출 검증을 완료했다([실제 출력 기록](docs/API_VERIFICATION.md) 참고). 현재 확정된 사용법과 구조는 [README.md](README.md)를 따른다.
 
 ## 1. 기획 목적
 

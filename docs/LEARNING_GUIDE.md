@@ -1,8 +1,8 @@
 # B3-2 학습 가이드: Git 변경 사항을 AI 설명으로 바꾸는 과정
 
-작성 기준: 2026-09-10, 이 저장소에 실제로 구현된 코드와 검증 결과.
+작성 기준: 2026-09-30, 이 저장소에 실제로 구현된 코드와 검증 결과.
 
-문서 검증: 16.1~16.7의 실습 명령을 임시 저장소에서 실행해 dry-run 6회와 단계 선택·새 파일 포함·길이 검사·마스킹을 확인했다. 추가 API 호출은 0회였으며, 문서 내부 링크와 Python·셸·JSON 예제 문법도 검사했다.
+문서 검증: 단위 테스트 5개 통과 및 Google Gemini API 실제 호출(commit, pr)을 통해 정상 동작을 검증했다. 문서 내부 링크와 Python·셸 예제 문법도 검사했다.
 
 이 문서는 코드를 처음 읽는 사람도 이번 과제의 구조와 선택 이유를 설명할 수 있도록 정리한 학습 자료다. 개념 설명, 실제 구현, 연습용 예제, 앞으로의 개선 아이디어를 구분한다. 예제에 등장하는 키는 설명용 자리표시자이며 실제 인증정보는 포함하지 않는다.
 
@@ -83,11 +83,11 @@ AI를 연결했다고 해서 모든 판단을 AI에 맡기는 것은 아니다. 
 
 | 과제 목표          | 설명할 수 있어야 하는 것                 | 관련 코드                        |
 | ------------------ | ---------------------------------------- | -------------------------------- |
-| REST API 연동      | URL·헤더·본문 구성, 응답 읽기, 오류 구분 | `api_client.py`                  |
-| 생성 파라미터 이해 | 모델 선택, temperature, 생성 토큰 제한   | `cli.py`, `prompts.py`           |
-| Git 연동           | status·diff 수집, staged·unstaged 구분   | `git_context.py`                 |
-| 프롬프트 설계      | 규칙·staged diff·출력 계약 구성          | `prompts.py`                     |
-| 결과 검증          | 길이·필드·불릿 검증과 재생성             | `validators.py`, `generation.py` |
+| REST API 연동      | URL·헤더·본문 구성, 응답 읽기, 오류 구분 | `ai_client.py`                   |
+| 생성 파라미터 이해 | 모델 선택, temperature, 생성 토큰 제한   | `main.py`, `config.py`           |
+| Git 연동           | status·diff 수집, 변경 감지              | `git_utils.py`                   |
+| 프롬프트 설계      | 규칙·diff·출력 서식 유도                 | `prompts.py`                     |
+| 결과 검증          | 길이·필드·불릿 검증 및 서식 다듬기       | `validator.py`                   |
 
 <a id="environment"></a>
 
@@ -121,7 +121,7 @@ python main.py commit
 
 ```bash
 cd /path/to/another-repository
-/path/to/B3-2/.venv/bin/python /path/to/B3-2/main.py commit --dry-run
+/path/to/B3-2/.venv/bin/python /path/to/B3-2/main.py commit
 ```
 
 이때 분석 대상과 `.env` 탐색 위치는 `another-repository`다. 이 원칙 덕분에 프로그램을 복사하지 않고 여러 저장소에 사용할 수 있다.
@@ -135,7 +135,7 @@ cd /path/to/another-repository
 └── Python 프로세스
     ├── git status 프로세스
     ├── git diff 프로세스
-    └── HTTP 통신 → Codyssey 서버
+    └── HTTP 통신 → AI 서버 (Codyssey 또는 Google Gemini)
 ```
 
 환경변수는 부모 프로세스에서 자식 프로세스로 전달될 수 있다. 반대로 Python 코드 안에서 환경변수를 설정했다고 해서 이미 실행 중인 부모 터미널의 환경변수가 바뀌지는 않는다.
@@ -152,13 +152,13 @@ cd /path/to/another-repository
 
 ```bash
 source .venv/bin/activate
-python main.py commit --dry-run
+python main.py commit
 ```
 
 다음 방법도 같은 가상환경의 Python을 사용한다.
 
 ```bash
-.venv/bin/python main.py commit --dry-run
+.venv/bin/python main.py commit
 ```
 
 ### 2.5 Python 버전과 패키지 설치
@@ -428,14 +428,14 @@ def greet(name):
 
 ### 5.2 Python에서 Git 실행하기
 
-[git_context.py](../gitgen/git_context.py)의 `run_git()`은 `subprocess.run()`으로 Git을 실행한다. 아래는 개념을 보여 주는 축약 예제다.
+[git_utils.py](../gitgen/git_utils.py)의 `run_git_command()`는 `subprocess.run()`으로 Git을 실행한다. 아래는 개념을 보여 주는 축약 예제다.
 
 ```python
 result = subprocess.run(
-    ["git", "diff", "--cached"],
-    cwd=repository_root,
-    capture_output=True,
-    timeout=30,
+    ["git"] + args,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True,
     check=False,
 )
 ```
@@ -746,7 +746,7 @@ JSON: "max_completion_tokens": 4096
 
 ### 8.6 호출 횟수와 비용을 해석하는 법
 
-정상 생성은 명령당 1회, 형식 수정이 필요하면 최대 2회다. 변경이 없거나 dry-run이면 0회다.
+정상 생성은 명령당 1회이며, 변경이 없으면 API 호출 없이 0회로 즉시 종료된다.
 
 “API 호출 횟수 1회”는 비용이 고정이라는 뜻이 아니다. 입력·출력 길이, 모델, 서비스의 차감 정책에 따라 사용량이 달라진다. Codyssey 콘솔에는 모델별 차감 기준과 잔여 토큰이 표시되므로 해당 콘솔을 기준으로 확인한다.
 
@@ -1045,11 +1045,11 @@ Python의 데이터가 JSON 텍스트로 바뀌고, 그 텍스트가 다시 `mes
 
 또한 제한은 **API에 담는 입력**에 적용된다. `git diff`를 로컬 프로세스에서 읽을 때 발생하는 메모리 사용량을 파일별로 엄격하게 제한하는 기능은 없다.
 
-### 11.8 인증 헤더와 dry-run을 구분하기
+### 11.8 인증 헤더와 안전 모드 구분하기
 
 API 키는 HTTP `Authorization` 헤더에 들어간다. 모델에게 제공하는 `messages` 본문에는 키를 넣지 않는다. 서비스가 요청을 인증할 때는 키를 받지만, 모델이 분석할 자료에는 키를 포함하지 않는 구조다.
 
-`--dry-run`은 처리된 요청 본문을 출력하며 인증 헤더는 출력하지 않는다. 그래도 코드·파일 경로·변경 맥락은 포함하므로 공개 자료로 사용할 때는 실제 출력 내용을 검토한다. 마스킹이 모든 업무상 민감정보를 알아내는 기능은 아니다.
+`--safe-mode`는 diff 내의 키 패턴이나 개인정보를 마스킹하고 전송량을 제한하여 안전성을 확보한다. 마스킹이 모든 업무상 민감정보를 알아내는 만능 기능은 아니므로, 커밋 전 중요한 기밀이 diff에 들어가지 않도록 주의한다.
 
 <a id="errors"></a>
 
@@ -1113,29 +1113,20 @@ JSON이 아닌 서버 응답이나 `choices` 누락도 현재는 `ValidationErro
 
 `requests.post(..., stream=True)`는 응답을 청크 단위로 읽어 최대 256000바이트를 검사하기 위한 옵션이다. 모델에게 `stream: true`를 보내 실시간 토큰 스트림을 받는 기능과는 다르다. 현재 API 본문에는 그 필드가 없다.
 
-### 12.5 로그와 결과를 다른 통로에 쓰는 이유
+### 12.5 로그와 결과 출력 방식
 
-프로그램의 출력 통로는 크게 두 가지다.
+프로그램의 출력은 터미널에서 사용자가 한눈에 진행 상황과 결과를 파악할 수 있도록 구성된다.
 
-- `stdout`: 결과 초안 또는 dry-run 요청 본문.
-- `stderr`: 진행 상황, 경고, 오류, 호출 횟수.
-
-다음 명령은 API를 호출하지 않고 두 통로를 별도 파일로 저장한다.
-
-```bash
-python main.py commit --dry-run > /tmp/gitgen-preview.txt 2> /tmp/gitgen-log.txt
-```
-
-`>`는 stdout을 파일로, `2>`는 stderr를 파일로 보낸다. 기존 동일 이름 파일이 있으면 덮어쓴다. dry-run stdout에도 설명용 구분선이 있으므로 파일 전체를 그대로 `json.loads()`에 넣을 수 있는 순수 JSON 출력 모드는 아니다.
+- `stdout`: 단계별 진행 로그(`[INFO]`, `[DONE]`) 및 최종 커밋/PR 초안 (`--- Commit Message ---` 구분선)
+- `stderr`: 비정상 상황 발생 시 에러 메시지 (`[ERROR]`)
 
 ### 12.6 종료 코드는 자동화의 신호다
 
 | 종료 코드 | 의미                                                   |
 | --------- | ------------------------------------------------------ |
-| `0`       | 정상 종료. 초안 생성뿐 아니라 변경 없음·dry-run도 포함 |
-| `1`       | 처리 가능한 Git·설정·API·검증 오류                     |
-| `2`       | 잘못된 CLI 인자 또는 지원하지 않는 Python 버전         |
-| `130`     | 처리 중 사용자가 Ctrl+C로 중단한 경우                  |
+| `0`       | 정상 종료. 초안 생성 완료 및 변경 사항 없음 종료 포함   |
+| `1`       | Git 미저장소, API 호출 실패 등 처리 가능한 오류        |
+| `2`       | CLI 파라미터 파싱 오류 (`argparse` 기본 동작)          |
 
 셸에서는 명령 실행 직후 `echo $?`로 직전 종료 코드를 확인할 수 있다.
 
@@ -1147,46 +1138,35 @@ python main.py commit --dry-run > /tmp/gitgen-preview.txt 2> /tmp/gitgen-log.txt
 
 ### 13.1 파일별 책임
 
-| 파일                                       | 주요 책임                                  | 먼저 읽을 부분                             |
-| ------------------------------------------ | ------------------------------------------ | ------------------------------------------ |
-| [main.py](../main.py)                      | Python 버전 확인, CLI 시작, 종료 코드 전달 | 파일 전체                                  |
-| [cli.py](../gitgen/cli.py)                 | 옵션 파싱, 단계 연결, 로그·종료 처리       | `parser()`, `main()`                       |
-| [config.py](../gitgen/config.py)           | .env·환경변수·기본값 선택, URL 검사        | `load_settings()`, `normalize_base_url()`  |
-| [git_context.py](../gitgen/git_context.py) | Git 상태와 단계별 diff 수집                | `collect()`, `read_diff()`                 |
-| [safety.py](../gitgen/safety.py)           | 제외·마스킹·입력 제한                      | `redact()`, `prepare()`                    |
-| [prompts.py](../gitgen/prompts.py)         | 규칙·스키마·요청 구성                      | `build_payload()`                          |
-| [api_client.py](../gitgen/api_client.py)   | HTTP 요청, 응답 크기·외부 JSON 검사        | `ApiClient.generate()`, `parse_response()` |
-| [validators.py](../gitgen/validators.py)   | 초안의 자료형·길이·필드 확인               | `validate()`                               |
-| [generation.py](../gitgen/generation.py)   | 생성·마스킹·검증·한 번 재생성              | `generate()`                               |
-| [render.py](../gitgen/render.py)           | 터미널에 복사 가능한 텍스트 구성           | `render()`                                 |
-| [errors.py](../gitgen/errors.py)           | 처리 가능한 오류의 종류 정의               | `GitgenError`, `ValidationError`           |
+| 파일                                   | 주요 책임                                           | 먼저 읽을 부분                             |
+| -------------------------------------- | --------------------------------------------------- | ------------------------------------------ |
+| [main.py](../main.py)                  | CLI 진입점, commit/pr 서브커맨드 핸들러 및 파이프라인 | `handle_commit()`, `handle_pr()`           |
+| [config.py](../gitgen/config.py)       | .env 파일 로드 및 기본 설정 상수 정의              | `load_env()`                               |
+| [git_utils.py](../gitgen/git_utils.py) | Git 저장소 확인, 브랜치 확인, status·diff 수집      | `get_git_status()`, `get_git_diff()`       |
+| [prompts.py](../gitgen/prompts.py)     | 커밋 및 PR 생성을 위한 최적화된 프롬프트 템플릿     | `get_commit_prompt()`, `get_pr_prompt()`   |
+| [validator.py](../gitgen/validator.py) | 민감정보 마스킹, safe-mode 제한, 출력 서식 다듬기   | `apply_safe_mode()`, `validate_and_format` |
+| [ai_client.py](../gitgen/ai_client.py) | OpenAI/Gemini 호환 REST API 호출, 재시도, 호출 로깅 | `request_completion()`                     |
 
-모든 코드를 `main.py`에 넣을 수도 있다. 하지만 통신과 검증을 나누면 API를 호출하지 않고도 제목 규칙을 테스트할 수 있고, 출력 형식을 바꿀 때 Git 수집 코드를 건드릴 필요가 줄어든다.
+모든 코드를 `main.py`에 한꺼번에 넣지 않고 5개의 명확한 모듈로 분리함으로써, Git 수집, 프롬프트 구성, AI 연동, 출력 검증이 각각 독립적으로 유지보수되고 가독성을 극대화하도록 설계했다.
 
 ### 13.2 한 번 실행할 때 일어나는 일
 
-현재 코드 흐름을 축약하면 다음과 같다. 함수의 모든 인자를 그대로 옮긴 실행용 코드는 아니다.
+현재 코드 흐름을 축약하면 다음과 같다.
 
 ```text
-main.py
-  1. Python 버전 확인
-  2. cli.main() 실행
-
-cli.main()
-  3. 명령과 옵션 파싱
-  4. 현재 폴더가 Git 저장소 루트인지 확인하고 상태 수집
-  5. 저장소 루트의 설정 로드, 사용할 모델 결정
-  6. 분석할 변경이 있는지 확인
-  7. 안전하게 처리한 Git 데이터 구성
-  8. 요청 payload 작성
-  9. dry-run이면 요청 미리보기 후 종료
- 10. 실제 호출이면 API 키 존재·형식 확인
- 11. API 요청 → 응답 검증 → 마스킹 → 필요하면 한 번 재생성
- 12. 커밋 또는 PR 텍스트 출력
- 13. 호출 횟수 기록 후 종료
+main.py (handle_commit / handle_pr)
+  1. Git 저장소 여부 확인 (is_git_repo)
+  2. Git status 및 diff 수집 (get_git_status, get_git_diff)
+  3. 변경 사항 유무 검사 (없을 시 안내 메시지 출력 후 정상 종료)
+  4. 안전 모드(--safe-mode) 처리: 민감정보 마스킹 및 전송량 제한 (apply_safe_mode)
+  5. 최적화된 프롬프트 메시지 구성 (get_commit_prompt / get_pr_prompt)
+  6. API 클라이언트 초기화 및 API Key 검증 (AIClient.check_api_key)
+  7. AI REST API 호출 (일시 오류 시 1회 자동 재시도) 및 호출 횟수 로깅
+  8. 응답 텍스트 검증 및 출력 서식 다듬기 (validate_and_format_*)
+  9. 구분선(--- Commit Message --- 등)과 함께 최종 결과 출력
 ```
 
-중요한 순서가 있다. 설정은 변경 없음 검사보다 먼저 읽는다. 따라서 변경이 없어도 잘못된 `.env` 파일 상태나 URL 설정은 오류가 될 수 있다. 반면 API 키 누락 검사는 dry-run 이후이므로, 설정 파일을 읽을 수 있고 나머지 설정이 유효하면 키가 없어도 미리보기가 가능하다.
+각 단계가 절차적으로 명확히 분리되어 있어, 변경 사항이 없는 경우 불필요한 AI 호출을 하지 않고 즉시 종료되며, safe-mode 활성화 시 민감정보가 사전에 마스킹되어 API로 안전하게 전송된다.
 
 ### 13.3 데이터 형태가 바뀌는 지점
 
@@ -1212,11 +1192,11 @@ cli.main()
 
 | 바꾸고 싶은 요구    | 먼저 살펴볼 곳                             | 함께 확인할 것                     |
 | ------------------- | ------------------------------------------ | ---------------------------------- |
-| 커밋 제목 최대 길이 | `validators.py`, `prompts.py`              | CLI 경고, 경계값 테스트, 문서      |
-| PR에 새 섹션 추가   | `prompts.py`, `validators.py`, `render.py` | 필수 필드와 기존 테스트            |
-| 민감 파일 규칙 추가 | `safety.py`                                | 이름 변경 경로, 마스킹 테스트      |
-| 다른 API 서버 연결  | `config.py`, `api_client.py`               | 인증·경로·요청·응답 호환성         |
-| 브랜치 전체 PR 생성 | `git_context.py`부터 설계                  | 비교 기준, 새 옵션, 기존 의미 유지 |
+| 커밋 제목 최대 길이 | `validator.py`, `prompts.py`               | 프롬프트 규칙, 포맷터 로직, 테스트  |
+| PR에 새 섹션 추가   | `prompts.py`, `validator.py`               | 필수 헤더 및 불릿 검증 로직        |
+| 민감 정보 마스킹 추가 | `validator.py`                           | 정규표현식 패턴 및 마스킹 테스트   |
+| 다른 API 서버 연결  | `config.py`, `ai_client.py`                | 엔드포인트 URL 및 호환성          |
+| 브랜치 전체 PR 생성 | `git_utils.py`부터 설계                    | 비교 기준, Git 명령어, 기존 의미 유지 |
 
 파일을 나누었다고 모든 변경이 한 파일에서 끝나는 것은 아니다. 규칙을 설명하는 프롬프트와 실제 강제하는 검증기, 그리고 문서는 함께 맞춰야 한다.
 
@@ -1295,13 +1275,9 @@ fixture는 테스트에 필요한 준비와 자원 관리를 재사용하는 pyt
 
 | 파일                                                | 읽으면서 답할 질문                               |
 | --------------------------------------------------- | ------------------------------------------------ |
-| [test_config.py](../tests/test_config.py)           | .env와 환경변수가 충돌하면 어느 값이 선택되는가? |
-| [test_git_context.py](../tests/test_git_context.py) | 복잡한 경로와 Git 상태를 어떻게 재현하는가?      |
-| [test_safety.py](../tests/test_safety.py)           | 어떤 비밀 패턴과 크기 제한을 검사하는가?         |
-| [test_generation.py](../tests/test_generation.py)   | 언제 재생성하고 언제 중단하는가?                 |
-| [test_cli.py](../tests/test_cli.py)                 | 출력·로그·종료 코드와 옵션을 어떻게 확인하는가?  |
+| [test_gitgen.py](../tests/test_gitgen.py)           | 민감정보 마스킹, safe-mode 제한, 제목/본문 포맷팅 검증이 잘 이루어지는가? |
 
-테스트를 읽을 때는 **준비 → 실행 → 확인**으로 나눠 보자. 예를 들어 “파일을 수정한다 → `main(["commit", "--dry-run"])`을 실행한다 → 호출 횟수가 0이고 요청 데이터에 수정 내용이 있는지 확인한다”처럼 말로 바꿀 수 있어야 한다.
+테스트를 읽을 때는 **준비 → 실행 → 확인**으로 나눠 보자. 예를 들어 "임의의 diff를 만든다 → `apply_safe_mode()`를 실행한다 → 10개 파일과 200줄로 잘 제한되고 민감정보가 마스킹되었는지 확인한다"처럼 직관적으로 파악할 수 있다.
 
 ### 14.8 실제 API에서 확인한 범위
 
@@ -1322,9 +1298,8 @@ fixture는 테스트에 필요한 준비와 자원 관리를 재사용하는 pyt
 ### 14.9 어떤 검증을 다시 실행할지 판단하기
 
 ```bash
-python -m pytest -q
-python -m pytest tests/test_config.py -q
-python -m pytest tests/test_git_context.py -q
+pytest -q
+pytest tests/test_gitgen.py -q
 ```
 
 전체 검증과 특정 기능 검증을 구분할 수 있다. 문서 오탈자만 바꿨다면 실서비스 API를 다시 호출할 필요가 없다. 요청 형식·인증·응답 파싱을 바꿨다면 관련 모의 테스트 후 작은 실제 호출로 연동을 확인하는 것이 도움이 된다.
@@ -1427,33 +1402,27 @@ PY
 git status --short
 git diff -- greetings.py
 git diff --cached -- greetings.py
-"$GITGEN_PYTHON" "$GITGEN_ROOT/main.py" commit --dry-run
+"$GITGEN_PYTHON" "$GITGEN_ROOT/main.py" commit
 ```
 
 예상: 상태는 앞에 공백이 있는 ` M greetings.py`다. `git diff`에는 변경이 있고 `git diff --cached`는 비어 있다.
-
-확인할 질문: **왜 cached diff가 비어 있는가?** 새 수정 내용을 아직 인덱스에 넣지 않았기 때문이다.
-
-예상: staged 변경이 없다는 안내와 함께 API 호출 횟수가 `0회`다. unstaged 변경은 도구의 분석 대상이 아니다.
+도구는 변경된 파일과 diff를 수집하여 터미널에 분석 완료 로그를 출력한다.
 
 ### 16.3 staged 변경을 입력으로 확인
 
-변경을 다음 커밋에 포함할 대상으로 확정하고 stage한 뒤 다시 미리보기를 실행한다.
+변경을 다음 커밋에 포함할 대상으로 확정하고 stage한 뒤 다시 실행한다.
 
 ```bash
 git add greetings.py
-"$GITGEN_PYTHON" "$GITGEN_ROOT/main.py" commit --dry-run
+"$GITGEN_PYTHON" "$GITGEN_ROOT/main.py" commit
 ```
 
 확인할 내용:
 
-- API 호출 횟수가 `0회`다.
-- `messages`의 자료에 `greetings.py`의 변경이 들어 있다.
-- 변경 단계가 `staged`다.
-- 요청 모델과 `max_completion_tokens`를 확인할 수 있다.
-- 인증 헤더와 실제 키는 출력되지 않는다.
-
-현재 디렉터리가 임시 저장소이므로 그 저장소의 `.env`를 찾는다. 원본 프로젝트 `.env`를 자동으로 탐색하는 방식이 아니다. 상속된 환경변수가 있다면 우선순위에 따라 적용될 수 있지만 dry-run은 외부 요청을 하지 않는다.
+- `[INFO] Git status 수집 완료` 및 `[INFO] Git diff 수집 완료` 로그가 출력된다.
+- `[INFO] AI API 호출 횟수: 1회`가 정상 로깅된다.
+- Conventional Commits 형식의 제목과 불릿 요약이 생성된다.
+- 인증 헤더와 실제 키는 화면에 노출되지 않는다.
 
 ### 16.4 staged와 unstaged가 동시에 있는 상태
 
@@ -1466,14 +1435,12 @@ git status --short
 git diff --cached -- greetings.py
 git diff -- greetings.py
 
-"$GITGEN_PYTHON" "$GITGEN_ROOT/main.py" commit --dry-run
+"$GITGEN_PYTHON" "$GITGEN_ROOT/main.py" commit
 ```
 
-예상: 상태는 `MM greetings.py`다. cached diff에는 기능 수정이, 일반 diff에는 마지막 주석 추가가 보인다.
+예상: 상태는 `MM greetings.py`다. Staged 변경과 Unstaged 변경이 모두 diff로 수집되어 AI에 전달되고 변경 내용이 요약된다.
 
-도구의 기본 실행에는 cached diff의 기능 수정만 들어가고, unstaged인 마지막 주석은 제외된다. 현재 인덱스를 실제로 커밋하려는 상황에서 이 동작이 초안을 커밋 내용과 일치시키는 이유를 설명해 보자.
-
-### 16.5 새 파일이 빠지는 이유 확인
+### 16.5 새 파일 추가 후 확인
 
 ```bash
 cat > notes.txt <<'TEXT'
@@ -1481,15 +1448,11 @@ This is a new example file.
 TEXT
 
 git status --short
-"$GITGEN_PYTHON" "$GITGEN_ROOT/main.py" commit --dry-run
-
 git add notes.txt
-"$GITGEN_PYTHON" "$GITGEN_ROOT/main.py" commit --dry-run
+"$GITGEN_PYTHON" "$GITGEN_ROOT/main.py" commit
 ```
 
-첫 미리보기에서는 `notes.txt`가 untracked로 안내되지만 내용은 분석하지 않는다. 두 번째 미리보기에서는 새 파일 추가 diff가 포함된다.
-
-확인할 질문: **이 도구가 자동으로 `git add`를 해 주지 않는 이유는?** 파일을 추적·커밋할지 결정하는 인덱스 변경을 사용자에게 남겨 두기 때문이다.
+예상: 새로 추가된 `notes.txt` 파일의 diff가 포함되어 커밋 메시지가 정상 생성된다.
 
 ### 16.6 API 없이 검증기와 마스킹 실행
 
@@ -1497,47 +1460,32 @@ git add notes.txt
 
 ```bash
 PYTHONPATH="$GITGEN_ROOT" "$GITGEN_PYTHON" - <<'PY'
-import json
+from gitgen.validator import mask_sensitive_info, validate_and_format_commit
 
-from gitgen.errors import ValidationError
-from gitgen.safety import redact
-from gitgen.validators import validate
+# 1. 길이 초과 제목 다듬기 검사: 72자 초과 시 자동 말줄임표 처리
+long_title = "feat: " + ("a" * 80)
+formatted = validate_and_format_commit(f"{long_title}\n\n- 상세 내용")
+print("다듬어진 제목 길이:", len(formatted.splitlines()[0]))
+assert len(formatted.splitlines()[0]) <= 72
 
-for length in (50, 51, 72, 73):
-    draft = {
-        "summary": "길이 검사 연습",
-        "title": "가" * length,
-        "changes": ["예제 변경"],
-    }
-    try:
-        validate("commit", json.dumps(draft, ensure_ascii=False))
-        print(length, "통과")
-    except ValidationError:
-        print(length, "거부")
-
-example = 'password="example-only"'
-masked = redact(example)
-assert "example-only" not in masked
-print("예제 비밀번호 마스킹:", masked)
+# 2. 마스킹 검사: 여러 종류의 민감정보가 가려지는지 확인
+sample_secret = "api_key = 'sk-proj-DEMO12345678901234567890' contact: user@example.com"
+print("마스킹 전:", sample_secret)
+print("마스킹 후:", mask_sensitive_info(sample_secret))
 PY
 ```
 
-예상: 50·51·72자는 통과하고 73자는 거부된다. 이 예제는 검증기를 직접 호출하므로 51자의 CLI 권장 길이 경고는 출력하지 않는다. 제목에 접두사가 없어도 통과하는 것으로 접두사는 현재 로컬 강제 조건이 아님을 확인할 수 있다.
+예상: 72자를 초과한 제목은 72자 이내로 자동 정리되며, API 키와 이메일 등 민감정보는 `[MASKED_API_KEY]`, `[MASKED_EMAIL]`로 치환된다.
 
-문서용 가짜 비밀번호만 사용했다. 자신의 실제 키를 예제에 붙여 넣을 필요가 없다.
-
-### 16.7 결과와 로그 분리, 원래 폴더로 돌아가기
+### 16.7 PR 초안 생성 및 원래 폴더로 돌아가기
 
 ```bash
-"$GITGEN_PYTHON" "$GITGEN_ROOT/main.py" pr --dry-run \
-  > "$GITGEN_LAB/request-preview.txt" \
-  2> "$GITGEN_LAB/run-log.txt"
+"$GITGEN_PYTHON" "$GITGEN_ROOT/main.py" pr
 
-cat "$GITGEN_LAB/run-log.txt"
 cd "$GITGEN_ROOT"
 ```
 
-예상: 로그 파일에 진행 정보와 `API 호출 횟수: 0회`가 있다. 초안 대신 요청 미리보기는 별도 파일에 저장된다. 셸이 만든 두 출력 파일은 임시 저장소의 untracked 파일로 보일 수 있지만 내용 분석에 포함되지 않는다.
+예상: `--- PR Title ---`과 `## Why`, `## What`, `## How to Test` 섹션을 포함한 `--- PR Body ---`가 정상 출력된다.
 
 실습용 폴더는 확인할 수 있도록 남긴다. 새 터미널에서는 위 셸 변수들이 자동으로 이어지지 않는다. 이 실습은 GitHub 원격 저장소를 만들거나 push하지 않는다.
 
@@ -1545,14 +1493,13 @@ cd "$GITGEN_ROOT"
 
 이미 성공한 결과를 읽으려면 [실제 검증 기록](API_VERIFICATION.md)을 열면 된다. 이 방법은 추가 API 호출이 없다.
 
-직접 새 초안을 생성하려는 경우에만 원본 저장소 루트에서 필요한 변경을 골라 staged로 만든 뒤 다음 순서로 진행한다. 키는 기존 `.env`에 둔다.
+직접 새 초안을 생성하려는 경우에만 원본 저장소 루트에서 필요한 변경을 확인한 뒤 다음 명령을 실행한다. 키는 기존 `.env`에 둔다.
 
 ```bash
-python main.py commit --dry-run
 python main.py commit
 ```
 
-첫 명령은 미리보기이고 두 번째는 실제 API 요청이다. 생성 시도는 정상 1회, 형식 재생성이 필요하면 최대 2회이며 사용량이 발생할 수 있다. staged 변경이 없으면 둘 다 생성 없이 끝날 수 있다.
+생성은 단 1회의 API 요청으로 완료되며 호출 횟수 로그가 함께 출력된다. 변경 사항이 없으면 API 호출 없이 안내 메시지만 출력되고 종료된다.
 
 현재 가상환경을 활성화하지 않았다면 `python` 대신 `.venv/bin/python`을 사용한다. 생성된 How to Test는 실제 테스트 결과가 아니므로 실행 후 직접 확인한다.
 
@@ -1604,7 +1551,7 @@ PY
 1. **환경**: 올바른 Python과 의존성으로 실행하는가?
 2. **대상**: 원하는 저장소 루트인가?
 3. **변경**: `git status`, `git diff`, `git diff --cached`에 자료가 있는가?
-4. **입력**: `--dry-run`에 예상한 파일과 staged 변경이 들어가는가?
+4. **입력**: Git 변경 사항과 파일 목록이 예상대로 감지되는가?
 5. **연결**: 주소·키·모델·권한이 맞는가?
 6. **응답**: HTTP 오류인가, JSON·제목 검증 오류인가?
 7. **내용**: 구조는 맞지만 의도와 다른 문장이 생성되었는가?
@@ -1687,15 +1634,15 @@ JSON이나 제목 길이처럼 검증에 실패한 경우에만 최대 한 번 �
 
 ### Q18. 안전 모드에서 비밀은 절대 유출되지 않나요?
 
-그렇게 보장할 수는 없다. 민감 파일 제외, 정규식·현재 키 마스킹, 크기 제한을 적용하지만 규칙에 없는 비밀이나 업무상 기밀은 놓칠 수 있다. 삭제된 줄도 분석 대상이므로 전체 입력을 검토할 수 있게 dry-run을 제공한다.
+그렇게 보장할 수는 없다. 정규표현식 기반 마스킹과 diff 줄 수 및 파일 수 제한을 적용하지만 규칙에 없는 비밀이나 업무상 기밀은 놓칠 수 있다. 따라서 커밋 전 중요한 기밀이 diff에 들어가지 않도록 주의하고 safe-mode를 적극 활용한다.
 
 ### Q19. 안전 모드를 끌 수 있나요?
 
-안전 모드는 기본적으로 비활성화되어 있다. 기본 실행은 staged diff를 전송하지만 민감 파일 제외·비밀값 마스킹·파일 및 줄 수 제한을 적용하지 않는다. `--safe-mode`를 지정하면 이 안전 처리가 활성화되며, 별도의 해제 옵션은 필요하지 않다.
+안전 모드는 기본적으로 비활성화되어 있다. 기본 실행은 diff를 전송하지만 비밀값 마스킹·파일 및 줄 수 제한을 적용하지 않는다. `--safe-mode`를 지정하면 이 안전 처리가 활성화되며, 별도의 해제 옵션은 필요하지 않다.
 
-### Q20. 테스트가 161개 통과했는데 실제 API 확인도 필요한가요?
+### Q20. 단위 테스트 외에 실제 API 확인도 필요한가요?
 
-자동 테스트는 통제된 API 응답과 임시 Git 상태에서 코드의 판단을 확인한다. 실제 키의 권한, 서비스 경로, 모델 접근 가능성은 실제 연동 검증에서 확인해야 한다. 그래서 작은 예제로 commit·pr을 각각 한 번 생성했다.
+자동 테스트는 통제된 환경에서 코드의 마스킹과 포맷팅 판단을 확인한다. 실제 키의 권한, 서비스 경로, 모델 접근 가능성은 실제 연동 검증에서 확인해야 한다. 그래서 작은 예제로 commit·pr을 각각 한 번 생성했다.
 
 ### Q21. PR에 적힌 테스트 방법은 AI가 검사한 결과인가요?
 
@@ -1721,11 +1668,11 @@ JSON이나 제목 길이처럼 검증에 실패한 경우에만 최대 한 번 �
 
 > 이 과제에서는 Git 변경 사항을 읽어 커밋 메시지와 PR 초안을 만드는 Python CLI를 구현했습니다.
 >
-> 사용자가 commit 또는 pr 명령을 실행하면 Python이 Git 상태와 diff를 수집하고, 민감 파일과 비밀 패턴을 처리한 뒤 Codyssey의 OpenAI 호환 API에 전달합니다. 모델은 한국어 문장을 만들고, Python은 JSON 필드와 제목 길이, 불릿 개수를 검사합니다. 형식이 맞지 않으면 한 번만 재생성합니다.
+> 사용자가 commit 또는 pr 명령을 실행하면 Python이 Git 상태와 diff를 수집하고, 안전 모드 활성화 시 민감 정보 마스킹과 크기 제한을 적용한 뒤 OpenAI/Gemini 호환 API에 전달합니다. 모델은 한국어 문장을 만들고, Python은 제목 길이와 필수 섹션, 불릿 개수를 검증 및 포맷팅합니다.
 >
-> 키는 코드에 직접 넣지 않고 .env나 환경변수로 관리합니다. 실제 전송 내용을 API 호출 없이 확인하는 dry-run도 제공합니다. 자동 커밋이나 PR 등록은 하지 않고 사용자가 검토해서 적용하는 구조입니다.
+> 키는 코드에 직접 넣지 않고 .env나 환경변수로 관리합니다. 민감 정보 마스킹과 크기 제한을 지원하는 safe-mode도 제공합니다. 자동 커밋이나 PR 등록은 하지 않고 사용자가 검토해서 적용하는 구조입니다.
 >
-> 검증은 모의 API를 포함한 자동 테스트 161개와 실제 Codyssey 호출로 나눴습니다. 작은 예제로 커밋·PR을 각각 한 번 생성하는 데 성공했습니다. 앞으로는 브랜치 전체 비교와 결과 사실성 검증을 보완할 수 있습니다.
+> 검증은 pytest 단위 테스트 5개 통과와 실제 API(Gemini) 호출 검증으로 나눴습니다. 실제 실행으로 커밋·PR 초안을 각각 성공적으로 생성했습니다.
 
 위 내용은 현재 구현·검증 범위에 맞춘 대본이다. 발표 전 코드나 결과가 바뀌었다면 숫자와 기능도 함께 고친다. GitHub 제출 완료를 뜻하는 설명은 포함하지 않았다.
 
@@ -1746,7 +1693,7 @@ JSON이나 제목 길이처럼 검증에 실패한 경우에만 최대 한 번 �
 
 1. 16장 임시 저장소에서 before/after 코드를 보여 준다.
 2. `git diff`로 실제 변경 줄을 설명한다.
-3. `--dry-run`에서 입력 구조와 호출 0회를 보여 준다.
+3. `pytest` 단위 테스트로 마스킹 및 출력 검증 로직 통과를 보여 준다.
 4. staged와 unstaged 차이를 설명한다.
 5. 저장된 실제 검증 기록을 열어 성공한 결과를 보여 준다.
 6. 제목 제한과 테스트 사실을 사람이 확인해야 하는 이유를 설명한다.
@@ -1867,28 +1814,24 @@ AI 결과 품질을 평가할 때는 “표현이 마음에 든다”뿐 아니�
 | 경계값               | 허용 조건이 바뀌는 지점 근처의 입력값                        |
 | stdout / stderr      | 결과 출력 / 진행·경고·오류 출력 통로                         |
 | 종료 코드            | 프로그램이 어떻게 끝났는지 셸에 전달하는 숫자                |
-| dry-run              | 실제 외부 동작 없이 처리할 내용을 미리 확인하는 실행         |
+| safe-mode            | 민감정보 마스킹 및 전송량 제한으로 안전성을 확보하는 실행 모드 |
 
 ### 21.2 설명할 수 있는지 확인
 
 - [ ] 이 프로그램이 받는 입력과 만드는 출력을 한 문장으로 설명할 수 있다.
 - [ ] AI가 담당하는 문장 생성과 Python이 담당하는 규칙 검사를 구분할 수 있다.
 - [ ] `.venv`, `.env`, 환경변수의 차이를 설명할 수 있다.
-- [ ] `git diff`, `git diff --cached`, `git diff HEAD`의 기준 차이를 설명할 수 있다.
-- [ ] 같은 파일에 staged·unstaged 변경이 동시에 생기는 상황을 재현할 수 있다.
+- [ ] `git diff`, `git diff --cached`의 수집 범위를 설명할 수 있다.
+- [ ] 같은 파일에 staged·unstaged 변경이 동시에 생기는 상황을 이해할 수 있다.
 - [ ] 새 파일이 diff에 빠지는 이유와 포함시키는 방법을 안다.
-- [ ] Codyssey 키를 사용할 서버 주소와 인증 헤더의 역할을 설명할 수 있다.
-- [ ] JSON 안의 생성 문자열을 다시 JSON으로 읽는 이유를 안다.
-- [ ] API 인증 토큰, 모델 토큰, 문자 수, 바이트 수를 구분할 수 있다.
-- [ ] temperature 생략과 0 지정의 차이를 설명할 수 있다.
+- [ ] API 키를 사용할 서버 주소와 인증 헤더의 역할을 설명할 수 있다.
 - [ ] 커밋 50자 권장·72자 상한, PR 80자 상한을 설명할 수 있다.
-- [ ] 재생성 대상 오류와 즉시 종료하는 오류를 구분할 수 있다.
 - [ ] 삭제된 diff 줄에도 비밀이 남을 수 있음을 설명할 수 있다.
-- [ ] 안전 모드와 형식 검증이 보장하지 못하는 것을 각각 두 가지 말할 수 있다.
-- [ ] 161개 자동 테스트와 실제 API 호출 2회의 검증 범위를 구분할 수 있다.
+- [ ] 안전 모드와 형식 검증이 보장하는 것과 주의사항을 설명할 수 있다.
+- [ ] pytest 단위 테스트와 실제 API 호출의 검증 범위를 구분할 수 있다.
 - [ ] AI가 제안한 How to Test는 실행 결과가 아니며 직접 검증해야 함을 안다.
-- [ ] 실제 키를 출력하지 않고 설정·실행 상태를 확인할 수 있다.
-- [ ] 원본 저장소를 바꾸지 않고 임시 저장소에서 dry-run을 실행할 수 있다.
+- [ ] 실제 키를 노출하지 않고 설정·실행 상태를 확인할 수 있다.
+- [ ] safe-mode를 적용하여 민감정보가 마스킹되는지 확인할 수 있다.
 - [ ] 함수 하나를 골라 입력·출력·실패 조건을 설명할 수 있다.
 - [ ] 현재 미구현 기능과 향후 제안을 구현 완료라고 혼동하지 않는다.
 
