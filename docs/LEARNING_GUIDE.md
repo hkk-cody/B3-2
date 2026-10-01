@@ -174,14 +174,13 @@ python -c "import sys; print(sys.executable)"
 
 의존성 파일의 역할은 다음과 같다.
 
-| 파일                   | 목적                                      |
-| ---------------------- | ----------------------------------------- |
-| `requirements.txt`     | 실행에 필요한 `requests`, `python-dotenv` |
-| `requirements-dev.txt` | 실행 의존성에 더해 테스트 도구 `pytest`   |
-| `pyproject.toml`       | 이 프로젝트에서는 pytest 탐색 경로 설정   |
+| 파일               | 목적                                      |
+| ------------------ | ----------------------------------------- |
+| `requirements.txt` | 실행 및 테스트에 필요한 `requests`, `pytest` |
+| `pyproject.toml`   | pytest 탐색 경로 등 프로젝트 도구 설정    |
 
 ```bash
-python -m pip install -r requirements-dev.txt
+python -m pip install -r requirements.txt
 ```
 
 `python -m pip`는 지금 선택한 Python으로 pip를 실행한다. 패키지를 설치한 Python과 프로그램을 실행하는 Python이 달라지는 혼란을 줄일 수 있다.

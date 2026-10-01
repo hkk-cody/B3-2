@@ -179,8 +179,7 @@ B3-2/
 │   ├── test_safety.py
 │   ├── test_generation.py
 │   └── test_cli.py
-├── requirements.txt
-├── requirements-dev.txt    # pytest 등 검증 도구
+├── requirements.txt        # 실행 및 테스트 패키지 (requests, pytest)
 ├── .gitignore
 └── README.md
 ```
