@@ -63,6 +63,9 @@ def handle_commit(args: argparse.Namespace) -> None:
         print("[INFO] 안전 모드(Safe Mode) 활성화: 민감 정보 마스킹 및 diff 제한 적용")
         diff_text, changed_files = apply_safe_mode(diff_text, changed_files)
 
+    safe_mode_str = "ON" if args.safe_mode else "OFF"
+    print(f"[INFO] 실행 파라미터: model={args.model}, temp={args.temperature}, max_tokens={args.max_tokens}, safe_mode={safe_mode_str}")
+
     # 4. AI API 호출
     client = AIClient(model=args.model)
     if not client.check_api_key():
@@ -126,6 +129,9 @@ def handle_pr(args: argparse.Namespace) -> None:
     if args.safe_mode:
         print("[INFO] 안전 모드(Safe Mode) 활성화: 민감 정보 마스킹 및 diff 제한 적용")
         diff_text, changed_files = apply_safe_mode(diff_text, changed_files)
+
+    safe_mode_str = "ON" if args.safe_mode else "OFF"
+    print(f"[INFO] 실행 파라미터: model={args.model}, temp={args.temperature}, max_tokens={args.max_tokens}, safe_mode={safe_mode_str}")
 
     # 4. AI API 호출
     client = AIClient(model=args.model)

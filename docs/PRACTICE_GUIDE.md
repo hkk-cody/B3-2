@@ -72,6 +72,7 @@ python main.py commit
 ```text
 [INFO] Git status 수집 완료: 1개 파일 변경 감지
 [INFO] Git diff 수집 완료: 1줄
+[INFO] 실행 파라미터: model=gemini-flash-latest, temp=1.0, max_tokens=2000, safe_mode=OFF
 [INFO] AI API 요청 중...
 [INFO] AI API 호출 횟수: 1회
 [DONE] 커밋 메시지 생성 완료
@@ -102,6 +103,7 @@ python main.py pr
 [INFO] 현재 브랜치: main
 [INFO] Git status 수집 완료: 1개 파일 변경 감지
 [INFO] Git diff 수집 완료: 1줄
+[INFO] 실행 파라미터: model=gemini-flash-latest, temp=1.0, max_tokens=3000, safe_mode=OFF
 [INFO] AI API 요청 중...
 [INFO] AI API 호출 횟수: 1회
 [DONE] PR 초안 생성 완료
