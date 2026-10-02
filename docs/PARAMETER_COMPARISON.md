@@ -44,8 +44,12 @@ AI(대형 언어 모델)는 문장을 작성할 때 **"다음에 올 단어로 �
 ## 🧪 1. 실험 환경 및 동일 입력 조건
 
 - **실험 대상 Git 변경 사항**: 2개 파일 변경, 29줄 diff (`docs/LEARNING_GUIDE.md`, `docs/PRACTICE_GUIDE.md`의 공백 및 포맷 정리)
-- **사용 모델**: `gpt-5-mini` (OpenAI 호환 API)
+- **사용 모델**: `gemini-flash-latest` (Google Gemini API)
 - **실행 명령**: `python main.py commit` 및 `python main.py pr`
+
+> **📌 실험 모델로 Gemini를 선정한 이유**:  
+> `gpt-5` 같은 최신 추론형(Reasoning) 모델은 내부 사고 과정의 고정성을 위해 공식적으로 `temperature` 변경을 지원하지 않으며(기본값 1.0 고정), 임의 값을 넘길 경우 프록시 서버에서 `502 Bad Gateway` 등의 오류를 반환합니다.  
+> 반면 **Google Gemini(`gemini-flash-latest`)**는 `temperature`를 `0.0 ~ 2.0`까지 온전하게 지원하므로, **온도 변화에 따른 AI 생성 결과물의 무작위성 및 어휘 다양성 차이를 정밀하게 비교·증빙하기 위해 Gemini 모델을 사용하여 실험을 수행**했습니다.
 
 ---
 
@@ -53,11 +57,11 @@ AI(대형 언어 모델)는 문장을 작성할 때 **"다음에 올 단어로 �
 
 ### 1) 실행 명령별 실제 터미널 출력 결과
 
-#### ❄️ Case A: 낮은 온도 (`--temperature 0.1`)
+#### ❄️ Case A: 낮은 온도 (`--model gemini-flash-latest --temperature 0.1`)
 가장 확률이 높은 단어만 선택하여 사실 위주로 아주 간결하고 정형화된 출력을 만듭니다.
 
 ```bash
-python main.py commit --temperature 0.1
+python main.py commit --model gemini-flash-latest --temperature 0.1
 ```
 
 ```text
@@ -73,11 +77,11 @@ Changed files: docs/LEARNING_GUIDE.md, docs/PRACTICE_GUIDE.md
 
 ---
 
-#### ☕ Case B: 중간 온도 (`--temperature 0.7`)
+#### ☕ Case B: 중간 온도 (`--model gemini-flash-latest --temperature 0.7`)
 자연스러운 문장 흐름과 균형 잡힌 어휘('트레일링 공백', '트레일링 스페이스')를 사용합니다.
 
 ```bash
-python main.py commit --temperature 0.7
+python main.py commit --model gemini-flash-latest --temperature 0.7
 ```
 
 ```text
@@ -92,11 +96,11 @@ docs: 문서 가이드의 불필요한 트레일링 공백 정리
 
 ---
 
-#### 🔥 Case C: 높은 온도 (`--temperature 1.5`)
+#### 🔥 Case C: 높은 온도 (`--model gemini-flash-latest --temperature 1.5`)
 어휘 선택의 폭이 넓어지고, 매 실행마다 제목이나 불릿 표현이 다채롭게 변화합니다.
 
 ```bash
-python main.py commit --temperature 1.5
+python main.py commit --model gemini-flash-latest --temperature 1.5
 ```
 
 ```text
@@ -134,7 +138,7 @@ docs/LEARNING_GUIDE.md, docs/PRACTICE_GUIDE.md
 AI가 토큰 예산이 매우 부족함을 인지하고, 최소한의 정보만으로 압축하여 출력합니다.
 
 ```bash
-python main.py commit --max-tokens 50
+python main.py commit --model gemini-flash-latest --max-tokens 50
 ```
 
 ```text
@@ -156,7 +160,7 @@ docs: 문서의 트레일링 공백 정리(LEARNING_GUIDE, PRACTICE_GUIDE)
 충분한 분량을 활용하여 변경 배경(Why), 구현 세부 내용(What), 구체적인 검증 명령어(How to Test)까지 풍부하게 작성합니다.
 
 ```bash
-python main.py pr --max-tokens 2000
+python main.py pr --model gemini-flash-latest --max-tokens 2000
 ```
 
 ```text
@@ -201,13 +205,24 @@ docs: 가이드 문서의 불필요한 공백 정리
 
 실제 실험을 통해 검증된 최적의 CLI 옵션 조합은 다음과 같습니다:
 
+### 1) 일반 모델 (Google Gemini 계열 권장)
+`temperature` 조절이 자유로운 일반 생성 모델을 사용할 때의 추천 설정입니다:
+
 ```bash
-# 1. 커밋 메시지: 정형화되고 정확한 요약 (낮은 온도)
-python main.py commit --temperature 0.3
+# 1. 커밋 메시지: 정형화되고 정확한 요약 (낮은 온도 0.3)
+python main.py commit --model gemini-flash-latest --temperature 0.3
 
-# 2. PR 초안: 풍부한 설명과 구체적인 테스트 검증 절차 (중간 온도 + 충분한 토큰)
-python main.py pr --temperature 0.7 --max-tokens 2500
+# 2. PR 초안: 풍부한 설명과 구체적인 테스트 검증 절차 (중간 온도 0.7 + 충분한 토큰 2500)
+python main.py pr --model gemini-flash-latest --temperature 0.7 --max-tokens 2500
 
-# 3. 보안이 중요한 환경: 안전 모드와 함께 사용
-python main.py commit --safe-mode --temperature 0.3
+# 3. 보안이 중요한 환경: 안전 모드(--safe-mode) 병행
+python main.py commit --model gemini-flash-latest --safe-mode --temperature 0.3
+```
+
+### 2) 추론 모델 (GPT-5 계열) 사용 시 주의사항
+- `gpt-5` 같은 최신 추론형(Reasoning) 모델은 `temperature` 조절 시 서버 에러(502)가 발생하므로, **온도 옵션을 생략(기본값 1.0)하고 `max-tokens`는 2000 이상으로 넉넉하게 설정**하는 것을 권장합니다:
+```bash
+# GPT-5 사용 시 권장: temperature는 기본값 유지, max-tokens 충분히 부여
+python main.py commit --model gpt-5-mini
+python main.py pr --model gpt-5-mini --max-tokens 2500
 ```
