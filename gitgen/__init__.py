@@ -2,8 +2,10 @@
 gitgen - AI 기반 Git 커밋 메시지 및 PR 초안 자동 생성 패키지
 """
 
+__version__ = "1.0.0"
+APP_VERSION = __version__
+
 from gitgen.config import (
-    APP_VERSION,
     DEFAULT_BASE_URL,
     DEFAULT_COMMIT_MAX_TOKENS,
     DEFAULT_MODEL,
@@ -28,6 +30,7 @@ from gitgen.validator import (
 )
 
 __all__ = [
+    "__version__",
     "APP_VERSION",
     "AIClient",
     "apply_safe_mode",

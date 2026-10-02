@@ -1,14 +1,18 @@
 import subprocess
-from typing import Dict, List, Tuple
 
 
-def run_git_command(args: List[str]) -> Tuple[int, str, str]:
-    """Git 명령어를 실행하고 (returncode, stdout, stderr)를 반환합니다."""
+def run_git_command(args: list[str]) -> tuple[int, str, str]:
+    """
+    Git 명령어를 실행하고 (returncode, stdout, stderr)를 반환합니다.
+    
+    Args: 
+        args: git [args] 형태로 실행할 명령어 리스트
+              (명령어를 분리 전달해서 Command Injection을 방어)
+    """
     try:
         result = subprocess.run(
             ["git"] + args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,  # stdout과 stderr을 파이썬 내부로 캡처
             text=True,
             check=False,
         )
@@ -31,14 +35,10 @@ def get_current_branch() -> str:
     if code == 0 and stdout:
         return stdout
 
-    # detached HEAD 또는 초기 커밋 전 상황 대응
-    code, stdout, _ = run_git_command(["rev-parse", "--abbrev-ref", "HEAD"])
-    if code == 0 and stdout:
-        return stdout
     return "main"
 
 
-def get_git_status() -> Dict:
+def get_git_status() -> dict:
     """
     git status --porcelain 명령으로 변경된 파일 목록을 가져옵니다.
     반환값:
@@ -62,7 +62,7 @@ def get_git_status() -> Dict:
             parts = line.split(maxsplit=1)
             if len(parts) == 2:
                 files.append(parts[1])
-            else:
+            else: # Safety Fallback
                 files.append(line)
 
     return {
@@ -72,30 +72,24 @@ def get_git_status() -> Dict:
     }
 
 
-def get_git_diff() -> Dict:
+def get_git_diff() -> dict:
     """
     git diff 결과를 수집합니다.
     - Staged 변경 사항 (git diff --cached)
     - Unstaged 변경 사항 (git diff)
     둘 다 수집하여 통합 diff 및 줄 수를 계산합니다.
     """
+    diff_parts = []
+
     # 1. Staged diff
-    _, staged_diff, _ = run_git_command(["diff", "--cached"])
+    code_staged, staged_diff, _ = run_git_command(["diff", "--cached"])
+    if code_staged == 0 and staged_diff:
+        diff_parts.append("# [Staged Changes]\n" + staged_diff)
 
     # 2. Unstaged diff
-    _, unstaged_diff, _ = run_git_command(["diff"])
-
-    diff_parts = []
-    if staged_diff:
-        diff_parts.append("# [Staged Changes]\n" + staged_diff)
-    if unstaged_diff:
+    code_unstaged, unstaged_diff, _ = run_git_command(["diff"])
+    if code_unstaged == 0 and unstaged_diff:
         diff_parts.append("# [Unstaged Changes]\n" + unstaged_diff)
-
-    # 3. staged/unstaged diff가 없지만 파일 변경/추가 상태가 있는 경우
-    if not staged_diff and not unstaged_diff:
-        code_st, stdout_st, _ = run_git_command(["status", "--porcelain"])
-        if code_st == 0 and stdout_st:
-            diff_parts.append("# [Detected Status Changes / Untracked Files]\n" + stdout_st)
 
     full_diff = "\n\n".join(diff_parts).strip()
     line_count = len(full_diff.splitlines()) if full_diff else 0
@@ -103,6 +97,6 @@ def get_git_diff() -> Dict:
     return {
         "diff": full_diff,
         "line_count": line_count,
-        "staged_diff": staged_diff,
-        "unstaged_diff": unstaged_diff,
+        "staged_diff": staged_diff if code_staged == 0 else "",
+        "unstaged_diff": unstaged_diff if code_unstaged == 0 else "",
     }

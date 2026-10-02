@@ -1,5 +1,4 @@
 import re
-from typing import List, Tuple
 
 
 def mask_sensitive_info(text: str) -> str:
@@ -16,7 +15,7 @@ def mask_sensitive_info(text: str) -> str:
     masked = re.sub(r"sk-[a-zA-Z0-9_\-]{20,}", "[MASKED_API_KEY]", masked)
     masked = re.sub(r"ghp_[a-zA-Z0-9]{36}", "[MASKED_GITHUB_TOKEN]", masked)
     masked = re.sub(r"AKIA[0-9A-Z]{16}", "[MASKED_AWS_KEY]", masked)
-    masked = re.sub(r"AIza[0-9A-Za-z-_]{35}", "[MASKED_GOOGLE_KEY]", masked)
+    masked = re.sub(r"AIza[0-9A-Za-z_\-]{35}", "[MASKED_GOOGLE_KEY]", masked)
 
     # 2. Key/Secret/Password 변수 할당 패턴
     pattern_secret = r"(?i)(api[_-]?key|token|secret|password|passwd|auth)\s*[:=]\s*['\"]?([a-zA-Z0-9_\-\.]{8,})['\"]?"
@@ -30,29 +29,14 @@ def mask_sensitive_info(text: str) -> str:
 
 
 def apply_safe_mode(
-    diff_text: str, changed_files: List[str], max_files: int = 10, max_lines: int = 200
-) -> Tuple[str, List[str]]:
+    diff_text: str, changed_files: list[str]
+) -> tuple[str, list[str]]:
     """
     안전 모드(safe-mode) 적용:
-    1. 민감정보 마스킹 (API Key, 패스워드, 이메일 등)
-    2. 파일 수 최대 10개로 제한
-    3. diff 줄 수 최대 200줄로 제한
+    민감정보(API Key, 패스워드, 이메일 등) 마스킹
     """
-    # 1. 민감정보 마스킹
     safe_diff = mask_sensitive_info(diff_text)
-
-    # 2. 파일 목록 제한
-    safe_files = changed_files[:max_files]
-    if len(changed_files) > max_files:
-        safe_files.append(f"... 외 {len(changed_files) - max_files}개 파일 생략")
-
-    # 3. diff 줄 수 제한
-    lines = safe_diff.splitlines()
-    if len(lines) > max_lines:
-        safe_diff = "\n".join(lines[:max_lines])
-        safe_diff += f"\n\n# ... [safe-mode: 최대 {max_lines}줄까지만 전송되었습니다. 나머지 {len(lines) - max_lines}줄 생략]"
-
-    return safe_diff, safe_files
+    return safe_diff, changed_files
 
 
 def validate_and_format_commit(commit_text: str) -> str:
@@ -80,27 +64,22 @@ def validate_and_format_commit(commit_text: str) -> str:
     if len(title) > 72:
         title = title[:69] + "..."
 
-    body_lines = lines[1:]
-    # 제목과 본문 사이 빈 줄 유지
-    formatted_body = []
+    result_lines = [title]
     has_started_body = False
 
-    for line in body_lines:
+    for line in lines[1:]:
         sline = line.strip()
         if not sline and not has_started_body:
             continue
-        has_started_body = True
-        formatted_body.append(line)
-
-    result_lines = [title]
-    if formatted_body:
-        result_lines.append("")  # 제목과 본문 사이 빈 줄
-        result_lines.extend(formatted_body)
+        if not has_started_body:
+            has_started_body = True
+            result_lines.append("")  # 제목과 본문 사이 빈 줄
+        result_lines.append(line)
 
     return "\n".join(result_lines).strip()
 
 
-def validate_and_format_pr(pr_text: str) -> Tuple[str, str]:
+def validate_and_format_pr(pr_text: str) -> tuple[str, str]:
     """
     PR 제목/본문 형식 검증 및 다듬기:
     - PR 제목: 최대 80자

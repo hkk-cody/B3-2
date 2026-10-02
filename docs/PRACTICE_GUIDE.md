@@ -19,8 +19,8 @@ source .venv/bin/activate
 프로젝트 루트의 `.env` 파일에 API 키가 설정되어 있어야 합니다:
 ```env
 AI_API_KEY=your_api_key_here
-AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
-AI_MODEL=gemini-flash-latest
+AI_BASE_URL=https://copa.codyssey.kr/v1
+AI_MODEL=gpt-5-mini
 ```
 
 ### 3) 실습용 Git 변경 사항 생성
@@ -49,13 +49,13 @@ usage: main.py commit [-h] [--model MODEL] [--temperature TEMPERATURE]
 options:
   -h, --help            show this help message and exit
   --model MODEL, -model MODEL
-                        사용할 AI 모델 이름 (기본값: gemini-flash-latest)
+                        사용할 AI 모델 이름 (기본값: gpt-5-mini)
   --temperature TEMPERATURE, -temperature TEMPERATURE
                         샘플링 온도 (범위: 0.0 ~ 2.0, 기본값: 1.0)
   --max-tokens MAX_TOKENS, -max-tokens MAX_TOKENS
                         생성할 최대 토큰 수 (범위: 16 ~ 32768, 기본값: 2000)
   --safe-mode, -safe-mode
-                        민감 정보 마스킹 및 diff 전송량 제한 안전 모드
+                        민감 정보(API 키, 패스워드, 이메일 등) 마스킹 안전 모드
 ```
 
 ---
@@ -72,7 +72,7 @@ python main.py commit
 ```text
 [INFO] Git status 수집 완료: 1개 파일 변경 감지
 [INFO] Git diff 수집 완료: 1줄
-[INFO] 실행 파라미터: model=gemini-flash-latest, temp=1.0, max_tokens=2000, safe_mode=OFF
+[INFO] 실행 파라미터: model=gpt-5-mini, temp=1.0, max_tokens=2000, safe_mode=OFF
 [INFO] AI API 요청 중...
 [INFO] AI API 호출 횟수: 1회
 [DONE] 커밋 메시지 생성 완료
@@ -103,7 +103,7 @@ python main.py pr
 [INFO] 현재 브랜치: main
 [INFO] Git status 수집 완료: 1개 파일 변경 감지
 [INFO] Git diff 수집 완료: 1줄
-[INFO] 실행 파라미터: model=gemini-flash-latest, temp=1.0, max_tokens=3000, safe_mode=OFF
+[INFO] 실행 파라미터: model=gpt-5-mini, temp=1.0, max_tokens=2500, safe_mode=OFF
 [INFO] AI API 요청 중...
 [INFO] AI API 호출 횟수: 1회
 [DONE] PR 초안 생성 완료
@@ -127,7 +127,7 @@ feat: 샘플 테스트 스크립트 sample.py 추가
 
 ## 4. 안전 모드 실습 (`--safe-mode`)
 
-코드 내에 API Key, 토큰, 패스워드, 이메일 등의 민감정보가 포함되어 있거나, diff 크기가 너무 큰 경우 안전하게 마스킹 및 제한합니다.
+코드 내에 API Key, 토큰, 패스워드, 이메일 등의 민감정보가 포함되어 있는 경우 안전하게 마스킹합니다.
 
 ```bash
 # 1. 민감 정보가 포함된 파일 생성
@@ -139,10 +139,8 @@ python main.py commit --safe-mode
 ```
 
 ### 동작 결과:
-- `[INFO] 안전 모드(Safe Mode) 활성화: 민감 정보 마스킹 및 diff 제한 적용` 메시지가 표시됩니다.
-- API Key(`sk-...`)는 `[MASKED_API_KEY]`로, 이메일은 `[MASKED_EMAIL]`로 자동 치환되어 AI API로 전송됩니다.
-- 변경 파일이 10개를 초과할 경우 최대 10개까지만 전달하고 나머지는 생략됩니다.
-- diff가 200줄을 초과할 경우 최대 200줄까지만 잘라서 전송됩니다.
+- `[INFO] 안전 모드(Safe Mode) 활성화: 민감 정보 마스킹 적용` 메시지가 표시됩니다.
+- API Key(`sk-...`, `ghp_...`, `AKIA...`, `AIza...`), 비밀번호/토큰 할당문, 이메일 등이 `[MASKED_API_KEY]`, `[MASKED_SECRET]`, `[MASKED_EMAIL]` 등으로 자동 치환되어 AI API로 전송됩니다.
 
 ---
 
@@ -169,7 +167,7 @@ python main.py commit --max-tokens 1500
 
 ### 1) 변경 사항이 없는 경우
 ```text
-[INFO] 변경 사항이 없습니다. 커밋 메시지를 생성하지 않고 종료합니다.
+[INFO] 변경 사항이 없습니다. 작업을 생성하지 않고 종료합니다.
 ```
 
 ### 2) Git 저장소가 아닌 디렉토리에서 실행한 경우

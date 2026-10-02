@@ -1,17 +1,8 @@
-import json
 import os
 import sys
 import time
-from typing import Dict, List, Optional
 
-# requests 모듈 사용 가능 여부 확인
-try:
-    import requests
-    HAS_REQUESTS = True
-except ImportError:
-    HAS_REQUESTS = False
-    import urllib.error
-    import urllib.request
+import requests
 
 from gitgen.config import DEFAULT_BASE_URL, DEFAULT_MODEL, DEFAULT_TEMPERATURE
 
@@ -21,9 +12,9 @@ class AIClient:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
-        model: Optional[str] = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        model: str | None = None,
     ):
         self.api_key = (
             api_key
@@ -44,8 +35,8 @@ class AIClient:
 
     def request_completion(
         self,
-        messages: List[Dict[str, str]],
-        model: Optional[str] = None,
+        messages: list[dict[str, str]],
+        model: str | None = None,
         temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: int = 2000,
     ) -> str:
@@ -89,70 +80,42 @@ class AIClient:
         for attempt in range(max_retries):
             self.call_count += 1
 
-            if HAS_REQUESTS:
+            try:
+                response = requests.post(url, headers=headers, json=payload, timeout=30)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    return data["choices"][0]["message"]["content"]
+
+                err_msg = response.text
                 try:
-                    response = requests.post(url, headers=headers, json=payload, timeout=30)
+                    err_json = response.json()
+                    if "error" in err_json:
+                        err_msg = err_json["error"].get("message", err_msg)
+                except Exception:
+                    pass
 
-                    if response.status_code == 200:
-                        data = response.json()
-                        return data["choices"][0]["message"]["content"]
+                # 일시적 서버 오류인 경우 재시도
+                if response.status_code in (500, 502, 503, 504) and attempt < max_retries - 1:
+                    time.sleep(1.5)
+                    continue
 
-                    err_msg = response.text
-                    try:
-                        err_json = response.json()
-                        if "error" in err_json:
-                            err_msg = err_json["error"].get("message", err_msg)
-                    except Exception:
-                        pass
+                raise RuntimeError(f"HTTP {response.status_code} - {err_msg}")
 
-                    # 일시적 서버 오류인 경우 재시도
-                    if response.status_code in (500, 502, 503, 504) and attempt < max_retries - 1:
-                        time.sleep(1.5)
-                        continue
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                if attempt < max_retries - 1:
+                    time.sleep(1.5)
+                    continue
+                raise RuntimeError(f"네트워크 연결 오류: {str(e)}")
 
-                    raise RuntimeError(f"HTTP {response.status_code} - {err_msg}")
+            except RuntimeError:
+                raise
 
-                except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                    if attempt < max_retries - 1:
-                        time.sleep(1.5)
-                        continue
-                    raise RuntimeError(f"네트워크 연결 오류: {str(e)}")
-
-                except RuntimeError:
-                    raise
-
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        time.sleep(1.5)
-                        continue
-                    raise RuntimeError(f"API 요청 중 오류 발생: {str(e)}")
-
-            else:
-                # requests 미설치 시 urllib.request Fallback
-                try:
-                    req_data = json.dumps(payload).encode("utf-8")
-                    req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
-                    with urllib.request.urlopen(req, timeout=30) as resp:
-                        resp_data = json.loads(resp.read().decode("utf-8"))
-                        return resp_data["choices"][0]["message"]["content"]
-
-                except urllib.error.HTTPError as e:
-                    err_body = e.read().decode("utf-8")
-                    try:
-                        err_json = json.loads(err_body)
-                        if "error" in err_json:
-                            err_body = err_json["error"].get("message", err_body)
-                    except Exception:
-                        pass
-                    if e.code in (500, 502, 503, 504) and attempt < max_retries - 1:
-                        time.sleep(1.5)
-                        continue
-                    raise RuntimeError(f"HTTP {e.code} - {err_body}")
-
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        time.sleep(1.5)
-                        continue
-                    raise RuntimeError(f"API 요청 중 오류 발생: {str(e)}")
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time.sleep(1.5)
+                    continue
+                raise RuntimeError(f"API 요청 중 오류 발생: {str(e)}")
 
         raise RuntimeError("API 요청 재시도 횟수를 초과했습니다.")
+

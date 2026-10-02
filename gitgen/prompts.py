@@ -1,7 +1,4 @@
-from typing import List
-
-
-def get_commit_prompt(changed_files: List[str], diff_text: str) -> List[dict]:
+def get_commit_prompt(changed_files: list[str], diff_text: str) -> list[dict]:
     """
     커밋 메시지 생성을 위한 AI 프롬프트를 구성합니다.
     """
@@ -33,7 +30,7 @@ def get_commit_prompt(changed_files: List[str], diff_text: str) -> List[dict]:
     ]
 
 
-def get_pr_prompt(branch_name: str, changed_files: List[str], diff_text: str) -> List[dict]:
+def get_pr_prompt(branch_name: str, changed_files: list[str], diff_text: str) -> list[dict]:
     """
     PR 제목 및 본문 초안 생성을 위한 AI 프롬프트를 구성합니다.
     """

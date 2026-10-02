@@ -73,7 +73,7 @@ refactor: gitgen 모듈 아키텍처 단순화 및 CLI 파이프라인 개편
 - `pytest`를 실행하여 단위 테스트 통과 여부 검증
 - 임의의 파일 수정 후 `python main.py commit`을 실행하여 커밋 메시지 포맷(제목 1줄 + 빈 줄 + 파일/불릿 요약) 생성 확인
 - `python main.py pr`을 실행하여 PR Title 및 3대 필수 섹션(`## Why`, `## What`, `## How to Test`)과 불릿 항목 출력 확인
-- `python main.py commit --safe-mode`를 실행하여 민감 정보 마스킹 및 diff 줄 수 제한이 정상 적용되는지 확인
+- `python main.py commit --safe-mode`를 실행하여 민감 정보 마스킹이 정상 적용되는지 확인
 ----------------
 ```
 

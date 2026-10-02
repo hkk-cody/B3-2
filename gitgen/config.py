@@ -1,8 +1,6 @@
 import os
 from pathlib import Path
 
-APP_VERSION = "1.0.0"
-
 
 def load_env(env_path: str = ".env") -> None:
     """
